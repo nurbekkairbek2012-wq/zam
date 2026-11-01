@@ -546,3 +546,11 @@ body.locked .page, body.locked .tabs, body.locked .wallet { visibility: hidden; 
 .lb th:nth-child(6), .lb td:nth-child(6) { width: 46px; text-align: right; }
 .dcell { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .dcell.up { color: #0a7d0a; } .dcell.down { color: #d03b3b; } .dcell.zero { color: #c3c2b7; }
+
+/* клетка дня растягивается под все задачи */
+.day { overflow: visible; min-height: 120px; }
+.chip { white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+@media (max-width: 760px) {
+  .day { min-height: 76px; }
+  .chip { -webkit-line-clamp: 3; line-height: 1.2; }
+}

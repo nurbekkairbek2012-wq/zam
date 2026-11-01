@@ -27,7 +27,7 @@ const Cal = {
     start.setDate(1 - (first.getDay() + 6) % 7);
     const today = U.today();
     const narrow = window.innerWidth < 760;
-    const maxChips = narrow ? 3 : 4;
+    const maxChips = Infinity; // показываем все задачи — клетка дня растягивается вниз
     let html = '';
     for (let i = 0; i < 42; i++) {
       const d = new Date(start); d.setDate(start.getDate() + i);
