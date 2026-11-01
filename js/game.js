@@ -277,7 +277,7 @@ const Game = {
   },
 
   // ---------- гибель и возрождение стран ----------
-  killReward(i) { return Math.round(15 + this.countries[i].base * 1.5); },
+  killReward(i) { return Math.round(5 + this.countries[i].base * 0.5); },
   checkDeath(d, killer) {
     if (this.cells(d) > 0 || this.st(d).dead) return;
     const s = this.st(d), c = this.countries[d];
