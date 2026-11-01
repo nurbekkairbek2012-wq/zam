@@ -199,6 +199,8 @@ const Game = {
   },
   ai(i) { return i !== this.player && this.countries[i] && this.cells(i) > 0; },
   sick(i) { const s = this.s.cs[i]; return !!(s && s.sick && s.sick > this.t); },
+  // страна мстит тебе за нападение (2 дня)
+  angry(i) { const s = this.s.cs[i]; return !!(s && s.grudge > 0 && s.grudgeUntil > this.t); },
   allied(a, b) { const s = this.s.cs[a]; return !!(s && s.ally === b && s.allyUntil > this.t); },
   level(i) { return i === this.player ? this.s.level : this.st(i).lvl; },
 
@@ -245,10 +247,12 @@ const Game = {
     this.fx('fortify', k);
   },
   // попытка забрать клетку k: 'ok' | 'fort' | 'shield' | 'last' | 'no'
-  tryTake(att, k) {
+  // force — штраф за пропуск: защита не помогает
+  tryTake(att, k, force) {
     const o = this.own[k];
     if (!this.isLand(k) || o === att) return 'no';
     if (o === this.player && this.cells(o) <= 1) return 'last';
+    if (force) { this.setOwner(k, att); return 'ok'; }
     if (this.fortGuard(k)) return 'fort';
     const sh = this.shieldFor(k);
     if (sh) { sh.hp--; this.breakShieldIfDead(sh); this.fx('block', k); return 'shield'; }
@@ -406,6 +410,9 @@ const Game = {
       this.log(`Атака на ${this.c(def)} упёрлась в щит, крепость или укрепление`, 'me', 'shield', Date.now());
       return true;
     }
+    const gs = this.st(def);
+    gs.grudge = (gs.grudge || 0) + n;
+    gs.grudgeUntil = Date.now() + 2 * DAY;
     this.log(`Ты захватил ${n} ${U.plural(n, 'клетку', 'клетки', 'клеток')} у ${this.c(def)}${how === 'port' ? ' (морской десант)' : how === 'cosmo' ? ' (удар с космодрома)' : ''}`, 'me', 'swords', Date.now());
     this.checkDeath(def, P);
     // союзник помогает
@@ -445,7 +452,7 @@ const Game = {
       const k = q.shift();
       if (this.own[k] !== me) continue;
       tries++;
-      const r = this.tryTake(att, k);
+      const r = this.tryTake(att, k, true);
       if (r === 'ok') lost++;
       else if (r === 'shield' || r === 'armor') blocked++;
       else if (r === 'last') break;
@@ -493,7 +500,7 @@ const Game = {
       ? `${this.c(r.a)} отбила обратно ${r.n} ${word} у ${this.c(r.d)}`
       : r.counter
       ? `${this.c(r.a)} отбила атаку и отняла ${r.n} ${word} у ${this.c(r.d)}`
-      : `${this.c(r.a)} захватила ${r.n} ${word} у ${this.c(r.d)}${r.how ? ` (${r.how})` : ''}`, r.d === this.player ? 'loss' : 'war', 'swords', r.t);
+      : `${this.c(r.a)} захватила ${r.n} ${word} у ${this.c(r.d)}${r.how ? ` (${r.how})` : ''}${r.revenge ? ' — месть за твоё нападение' : ''}`, r.d === this.player ? 'loss' : 'war', 'swords', r.t);
   },
   summary(before, due) {
     const delta = this.countries.map((c, i) => c ? this.cells(i) - (before[i] || 0) : 0);

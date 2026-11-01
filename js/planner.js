@@ -17,7 +17,7 @@ const Planner = {
   GOAL_BONUS: 50,
   CELLS_LOST_PER_HOUR: 2,
   GOAL_FAIL_CELLS: 15,
-  GRACE_MS: 3 * 3600e3, // сколько после конца задачи можно успеть отметить её выполненной
+  GRACE_MS: 24 * 3600e3, // сутки после конца задачи, чтобы успеть отметить её выполненной
 
   tasks: [],
   settings: { schoolOn: true, schoolStart: '08:00', schoolEnd: '16:00', summerOff: true, notify: false },
@@ -143,7 +143,7 @@ const Planner = {
       }
       if (t.type === 'long' && !t.goalDone && !t.goalMissed && t.dates.length) {
         const last = [...t.dates].sort().pop();
-        if (now > this.endOf(t, last).getTime() + 24 * 3600e3) {
+        if (now > this.endOf(t, last).getTime() + this.GRACE_MS + 12 * 3600e3) {
           t.goalMissed = now;
           changed = true;
           Game.penalty(this.GOAL_FAIL_CELLS, `провалена цель «${t.title}»`);

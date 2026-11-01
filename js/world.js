@@ -13,6 +13,7 @@ const ALIEN_COOLDOWN = 30 * DAY; // не чаще раза в месяц
 const SICK_DAYS = 7;
 
 const World = {
+  CALM_SKIP: 0.5, // как часто сосед передумывает нападать на тебя без повода
   BATTLES_PER_TICK: 1.7, // ≈ 80 попыток (около 50 удачных стычек) в сутки на весь мир
 
   tick() {
@@ -71,7 +72,7 @@ const World = {
         if (!G.ai(i)) return;
         const b = counts.get(i) || {};
         const over = Math.max(1, G.cells(i) / Math.max(1, c.init));
-        const w = G.eff(i) ** 1.5 * (1 + 0.3 * (b.mine || 0) + 0.2 * (b.oil || 0)) * (c.kind === 'alien' ? 4 : 1) / (over * over);
+        const w = G.eff(i) ** 1.5 * (1 + 0.3 * (b.mine || 0) + 0.2 * (b.oil || 0)) * (c.kind === 'alien' ? 4 : 1) * (G.angry(i) ? 25 : 1) / (over * over);
         pool.push([i, w]); total += w;
       });
       if (!pool.length) return null;
@@ -80,7 +81,8 @@ const World = {
       for (const [i, w] of pool) if ((r -= w) <= 0) { a = i; break; }
     }
     const isAlien = G.countries[a].kind === 'alien';
-    const okTarget = o => o !== OCEAN && o < FLOOD && o !== a && !G.allied(a, o) && (o !== G.player || isAlien);
+    const angry = G.angry(a);
+    const okTarget = o => o !== OCEAN && o < FLOOD && o !== a && !G.allied(a, o);
     const fronts = [];
     const L = G.lists[a];
     if (!L.length) return null;
@@ -98,11 +100,16 @@ const World = {
       }
     }
     if (!fronts.length) return null;
-    const cell = G.rand(fronts), d = G.own[cell];
+    // обиженная страна целится именно в тебя
+    const atMe = fronts.filter(k => G.own[k] === G.player);
+    const cell = angry && atMe.length ? G.rand(atMe) : G.rand(fronts), d = G.own[cell];
+    // в обычное время на тебя нападают нечасто
+    if (d === G.player && !angry && !isAlien && Math.random() < this.CALM_SKIP) return null;
     if (G.cells(d) <= 4 && Math.random() < 0.92) return null; // маленьких добивают редко
 
     this.contagion(a, d);
-    const A = G.eff(a) * (G.s.buildings.some(b => b.type === 'fort' && b.cell === cell) ? 0.6 : 1) * (G.orig[cell] === a ? 1.8 : 1);
+    const revenge = d === G.player && angry;
+    const A = G.eff(a) * (G.s.buildings.some(b => b.type === 'fort' && b.cell === cell) ? 0.6 : 1) * (G.orig[cell] === a ? 1.8 : 1) * (revenge ? 1.6 : 1);
     const D = G.defense(d);
     if (Math.random() < A * A / (A * A + D * D)) {
       const lvl = G.level(a);
@@ -113,7 +120,8 @@ const World = {
         const front = G.lists[d].find(c => G.nbrs(c).some(nb => G.own[nb] === ally));
         if (front != null) G.grab(ally, d, front, 1);
       }
-      return { a, d, n, how };
+      if (revenge && n) { const s = G.st(a); s.grudge = Math.max(0, s.grudge - n); }
+      return { a, d, n, how, revenge };
     }
     if (Math.random() < 0.25 && d !== G.player) {
       const back = G.nbrs(cell).find(nb => G.own[nb] === a);
@@ -129,7 +137,7 @@ const World = {
     for (let i = 0; i < 25; i++) {
       const k = list[(Math.random() * list.length) | 0];
       const holder = G.own[k], home = G.orig[k];
-      if (holder === G.player || !G.cells(home) || G.allied(home, holder)) continue;
+      if (holder === G.player || home === G.player || !G.cells(home) || G.allied(home, holder)) continue;
       if (!G.nbrs(k).some(n => G.own[n] === home)) continue;
       if (G.tryTake(home, k) === 'ok') {
         G.checkDeath(holder, home);
