@@ -644,19 +644,23 @@ const MapView = {
     if (!this.lbOpen) return;
     const rows = Game.countries.map((c, i) => [i, c ? Game.cells(i) : 0]).filter(([i, n]) => n > 0).sort((a, b) => b[1] - a[1]);
     const P = Game.player;
-    const now = Stats.ranksNow(), dayAgo = Stats.ranksDayAgo();
+    const now = Stats.ranksNow(), dayAgo = Stats.ranksDayAgo(), cellsDay = Stats.countsDayAgo();
+    const dc = i => {
+      const d = Stats.cellsDelta(i, cellsDay);
+      return !d ? '<span class="dcell zero">0</span>' : `<span class="dcell ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${Math.abs(d)}</span>`;
+    };
     const mv = i => {
       const d = Stats.rankDelta(i, now, dayAgo);
       if (!d) return '<span class="mv zero">–</span>';
       return `<span class="mv ${d > 0 ? 'up' : 'down'}" title="${d > 0 ? 'поднялась' : 'опустилась'} на ${Math.abs(d)} за сутки">${ic(d > 0 ? 'up' : 'down')}${Math.abs(d)}</span>`;
     };
-    const row = ([i, n], r) => `<tr class="${i === P ? 'me' : ''}"><td>${r}</td><td>${mv(i)}</td><td>${Game.flag(i)}</td><td>${U.esc(Game.name(i))}</td><td>${n}</td></tr>`;
+    const row = ([i, n], r) => `<tr class="${i === P ? 'me' : ''}"><td>${r}</td><td>${mv(i)}</td><td>${Game.flag(i)}</td><td>${U.esc(Game.name(i))}</td><td>${n}</td><td>${dc(i)}</td></tr>`;
     const myRank = rows.findIndex(([i]) => i === P);
     const old = U.$('.lb-scroll', el);
     const scroll = old ? old.scrollTop : 0;
     el.innerHTML = `<div class="lb-head">${ic('trophy')} Страны по площади <button id="lb-x">${ic('x')}</button></div>
-      <div class="lb-sub">Стрелка — на сколько мест страна сдвинулась за сутки. Листай вниз, чтобы увидеть всех</div>
-      <div class="lb-scroll"><table><thead><tr><th>#</th><th></th><th></th><th>Страна</th><th>Клеток</th></tr></thead><tbody>${rows.map((x, r) => row(x, r + 1)).join('')}</tbody></table></div>
+      <div class="lb-sub">Стрелка — на сколько мест страна сдвинулась за сутки, «24 ч» — сколько клеток получила или потеряла. Листай вниз, чтобы увидеть всех</div>
+      <div class="lb-scroll"><table><thead><tr><th>#</th><th></th><th></th><th>Страна</th><th>Клеток</th><th title="Сколько клеток страна получила или потеряла за сутки">24 ч</th></tr></thead><tbody>${rows.map((x, r) => row(x, r + 1)).join('')}</tbody></table></div>
       ${myRank >= 10 ? `<table class="lb-me"><tbody>${row(rows[myRank], myRank + 1)}</tbody></table>` : ''}`;
     U.$('.lb-scroll', el).scrollTop = scroll;
     U.$('#lb-x').onclick = () => { this.lbOpen = false; this.renderLeaderboard(); };

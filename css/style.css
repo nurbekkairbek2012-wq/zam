@@ -542,3 +542,7 @@ body.locked .page, body.locked .tabs, body.locked .wallet { visibility: hidden; 
 .offer .btn { flex: 0 0 auto; white-space: nowrap; }
 .dh { margin: 6px 0 0; font-size: 14px; }
 .tag.red { background: #fee2e2; color: #b91c1c; }
+.lb { width: 386px; }
+.lb th:nth-child(6), .lb td:nth-child(6) { width: 46px; text-align: right; }
+.dcell { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dcell.up { color: #0a7d0a; } .dcell.down { color: #d03b3b; } .dcell.zero { color: #c3c2b7; }

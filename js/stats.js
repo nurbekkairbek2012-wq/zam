@@ -96,14 +96,24 @@ const Stats = {
     const arr = Game.countries.map((c, i) => c && c.kind === 'nation' ? c.init : 0);
     return this.ranksOf(arr);
   },
-  // места сутки назад; если игре меньше суток — по самому старому снимку
-  ranksDayAgo() {
+  // клетки стран сутки назад; если игре меньше суток — по самому старому снимку
+  countsDayAgo() {
     const h = this.st.hist;
     if (!h.length) return null;
     const target = Date.now() - DAY;
     let best = h[0];
     for (const x of h) if (x.t <= target) best = x;
-    return this.ranksOf(this.decode(best));
+    return this.decode(best);
+  },
+  // места сутки назад
+  ranksDayAgo() {
+    const c = this.countsDayAgo();
+    return c ? this.ranksOf(c) : null;
+  },
+  // на сколько клеток страна выросла за сутки (минус — уменьшилась)
+  cellsDelta(i, before) {
+    if (!before) return null;
+    return Game.cells(i) - (before[i] || 0);
   },
   // на сколько мест поднялась страна (плюс — вверх)
   rankDelta(i, now, before) {

@@ -467,21 +467,21 @@ const Dash = {
   },
 
   table() {
-    const rNow = Stats.ranksNow(), rDay = Stats.ranksDayAgo(), rStart = Stats.ranksStart();
+    const rNow = Stats.ranksNow(), rDay = Stats.ranksDayAgo(), rStart = Stats.ranksStart(), cDay = Stats.countsDayAgo();
     const rows = Game.countries.map((c, i) => {
       if (!c) return null;
       const n = Game.cells(i), w = Stats.cellsAgo(i, 7 * DAY);
       const b = Buildings.owned(i).length;
       const st = Game.s.cs[i] || {};
       const status = !n ? 'погибла' : Game.sick(i) ? 'эпидемия' : st.ally != null && st.allyUntil > Date.now() ? 'союз' : c.kind === 'alien' ? 'пришельцы' : c.kind === 'rebel' ? 'повстанцы' : '';
-      return { i, name: Game.name(i), rank: rNow.get(i) ?? null, rd1: Stats.rankDelta(i, rNow, rDay), rd0: Stats.rankDelta(i, rNow, rStart), cells: n, init: c.init, dc: n - c.init, d7: w == null ? null : n - w, power: Math.round(Game.eff(i)), b, status };
+      return { i, name: Game.name(i), rank: rNow.get(i) ?? null, rd1: Stats.rankDelta(i, rNow, rDay), rd0: Stats.rankDelta(i, rNow, rStart), cells: n, dd1: Stats.cellsDelta(i, cDay), init: c.init, dc: n - c.init, d7: w == null ? null : n - w, power: Math.round(Game.eff(i)), b, status };
     }).filter(Boolean);
     const { key, dir } = this.sort;
     rows.sort((a, b) => ((a[key] ?? -1e9) > (b[key] ?? -1e9) ? 1 : (a[key] ?? -1e9) < (b[key] ?? -1e9) ? -1 : 0) * dir);
     const th = (k, l) => `<th data-k="${k}" class="${key === k ? 'on' : ''}">${l}${key === k ? ic(dir < 0 ? 'down' : 'up') : ''}</th>`;
     return this.card('Все страны мира', `<div class="tw"><table class="dt">
-      <thead><tr>${th('rank', 'Место')}${th('name', 'Страна')}${th('rd1', 'Место за сутки')}${th('rd0', 'Место с начала')}${th('cells', 'Клеток')}${th('init', 'Было')}${th('dc', 'Клеток с начала')}${th('d7', 'За 7 дней')}${th('power', 'Сила')}${th('b', 'Построек')}${th('status', 'Статус')}</tr></thead>
-      <tbody>${rows.map(r => `<tr class="${r.i === Game.player ? 'me' : ''}"><td>${r.rank ?? '—'}</td><td>${Game.flag(r.i)} ${U.esc(r.name)}</td><td>${r.rd1 == null ? '—' : Ch.delta(r.rd1)}</td><td>${r.rd0 == null ? '—' : Ch.delta(r.rd0)}</td><td>${r.cells}</td><td>${r.init}</td><td>${Ch.delta(r.dc)}</td><td>${r.d7 == null ? '—' : Ch.delta(r.d7)}</td><td>${r.power}</td><td>${r.b}</td><td>${r.status}</td></tr>`).join('')}</tbody>
+      <thead><tr>${th('rank', 'Место')}${th('name', 'Страна')}${th('rd1', 'Место за сутки')}${th('rd0', 'Место с начала')}${th('cells', 'Клеток')}${th('dd1', 'За сутки')}${th('init', 'Было')}${th('dc', 'Клеток с начала')}${th('d7', 'За 7 дней')}${th('power', 'Сила')}${th('b', 'Построек')}${th('status', 'Статус')}</tr></thead>
+      <tbody>${rows.map(r => `<tr class="${r.i === Game.player ? 'me' : ''}"><td>${r.rank ?? '—'}</td><td>${Game.flag(r.i)} ${U.esc(r.name)}</td><td>${r.rd1 == null ? '—' : Ch.delta(r.rd1)}</td><td>${r.rd0 == null ? '—' : Ch.delta(r.rd0)}</td><td>${r.cells}</td><td>${r.dd1 == null ? '—' : Ch.delta(r.dd1)}</td><td>${r.init}</td><td>${Ch.delta(r.dc)}</td><td>${r.d7 == null ? '—' : Ch.delta(r.d7)}</td><td>${r.power}</td><td>${r.b}</td><td>${r.status}</td></tr>`).join('')}</tbody>
     </table></div>`, { full: true, note: 'Нажми на заголовок столбца, чтобы отсортировать' });
   },
 };
