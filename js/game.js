@@ -111,6 +111,7 @@ const Game = {
       if (last !== k) { L[this.pos[k]] = last; this.pos[last] = this.pos[k]; }
     }
     this.own[k] = o;
+    if (this.s.armor && this.s.armor[k]) delete this.s.armor[k];
     Stats.cell(k, old, o);
     if (o !== OCEAN && o < FLOOD) { this.pos[k] = this.lists[o].length; this.lists[o].push(k); }
     this.dirtyCells.push(k);
@@ -222,6 +223,12 @@ const Game = {
     this.s.buildings = this.s.buildings.filter(b => b !== sh);
     if (this.own[sh.cell] === this.player) this.log('Щит разрушен — у него кончились HP', 'loss', 'shield');
   },
+  // бронь клетки: сколько ударов она ещё выдержит
+  armorOf(k) { return (this.s.armor && this.s.armor[k]) || 0; },
+  fortify(k, n = 1) {
+    this.s.armor = this.s.armor || {};
+    this.s.armor[k] = (this.s.armor[k] || 0) + n;
+  },
   // попытка забрать клетку k: 'ok' | 'fort' | 'shield' | 'last' | 'no'
   tryTake(att, k) {
     const o = this.own[k];
@@ -230,6 +237,7 @@ const Game = {
     if (this.fortGuard(k)) return 'fort';
     const sh = this.shieldFor(k);
     if (sh) { sh.hp--; this.breakShieldIfDead(sh); return 'shield'; }
+    if (this.armorOf(k)) { this.s.armor[k]--; if (!this.s.armor[k]) delete this.s.armor[k]; if (o === this.player) Stats.bump('armor_used'); return 'armor'; }
     this.setOwner(k, att);
     return 'ok';
   },
@@ -348,7 +356,15 @@ const Game = {
     if (def === OCEAN) return U.toast('Это океан');
     if (def === CRATER) return U.toast('Тут кратер от метеорита — земля ещё восстанавливается');
     if (def === FLOOD) return U.toast('Земля затоплена цунами');
-    if (def === P) return U.toast('Это уже твоя земля');
+    if (def === P) {
+      if (this.s.charges <= 0) return U.toast('Нет зарядов — купи в магазине');
+      this.s.charges--;
+      this.fortify(k);
+      Stats.bump('fortified');
+      U.toast(`Клетка укреплена: выдержит ${this.armorOf(k)} ${U.plural(this.armorOf(k), 'удар', 'удара', 'ударов')}`);
+      this.changed();
+      return true;
+    }
     if (this.allied(P, def)) return U.toast('Это твой союзник');
     const how = this.reach(k);
     if (!how) return U.toast('Слишком далеко. Нужен порт рядом или космодром');
@@ -371,7 +387,7 @@ const Game = {
     this.cause = null;
     Stats.bump(n ? 'atk_win' : 'atk_fail');
     if (!n) {
-      this.log(`Атака на ${this.c(def)} упёрлась в щит или крепость`, 'me', 'shield', Date.now());
+      this.log(`Атака на ${this.c(def)} упёрлась в щит, крепость или укрепление`, 'me', 'shield', Date.now());
       return true;
     }
     this.log(`Ты захватил ${n} ${U.plural(n, 'клетку', 'клетки', 'клеток')} у ${this.c(def)}${how === 'port' ? ' (морской десант)' : how === 'cosmo' ? ' (удар с космодрома)' : ''}`, 'me', 'swords', Date.now());
@@ -415,7 +431,7 @@ const Game = {
       tries++;
       const r = this.tryTake(att, k);
       if (r === 'ok') lost++;
-      else if (r === 'shield') blocked++;
+      else if (r === 'shield' || r === 'armor') blocked++;
       else if (r === 'last') break;
       for (const nb of this.nbrs(k)) if (!seen.has(nb) && this.own[nb] === me) { seen.add(nb); q.push(nb); }
     }
@@ -423,7 +439,7 @@ const Game = {
     if (blocked) Stats.bump('blocked', blocked);
     const cap = reason[0].toUpperCase() + reason.slice(1);
     let text = `${cap} — ${this.c(att)} ${lost ? `захватила ${lost} ${U.plural(lost, 'твою клетку', 'твои клетки', 'твоих клеток')}` : 'атаковала тебя'}`;
-    if (blocked) text += `. Щиты отбили ${blocked}`;
+    if (blocked) text += `. Щиты и укрепления отбили ${blocked}`;
     if (this.cells(me) <= 1) text += '. Осталась последняя клетка — её не отнять, но пора собраться!';
     this.log(text, 'loss', 'alert');
   },

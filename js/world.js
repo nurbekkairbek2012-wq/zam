@@ -13,7 +13,7 @@ const ALIEN_COOLDOWN = 30 * DAY; // не чаще раза в месяц
 const SICK_DAYS = 7;
 
 const World = {
-  BATTLE_CHANCE: 0.5, // ≈ 24 стычки в сутки на весь мир
+  BATTLES_PER_TICK: 1.7, // ≈ 80 попыток (около 50 удачных стычек) в сутки на весь мир
 
   tick() {
     const G = Game, t = G.t;
@@ -30,7 +30,8 @@ const World = {
     this.respawns();
 
     const out = [];
-    if (Math.random() < this.BATTLE_CHANCE) { const r = this.battle(counts); if (r) out.push(r); }
+    let nb = Math.floor(this.BATTLES_PER_TICK) + (Math.random() < this.BATTLES_PER_TICK % 1 ? 1 : 0);
+    while (nb-- > 0) { const r = this.battle(counts); if (r) out.push(r); }
     // казармы и космодромы ИИ
     G.countries.forEach((c, o) => {
       if (!G.ai(o)) return;

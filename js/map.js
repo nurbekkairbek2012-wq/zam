@@ -186,6 +186,29 @@ const MapView = {
 
     const bs = Math.max(16, Math.min(36, s * 1.6)); // размер значков
 
+    // укреплённые клетки: в углу число ударов, которые клетка выдержит
+    if (Game.s.armor && s >= 7) {
+      const r = Math.max(5, s * 0.26);
+      ctx.font = `700 ${Math.round(r * 1.2)}px system-ui`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (const key in Game.s.armor) {
+        const k = +key, [ax, ay] = Game.xy(k);
+        const px = X(ax + 1) - r - 1, py = Y(ay) + r + 1;
+        if (!onScreen(px, py, 10)) continue;
+        ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fillStyle = own[k] === Game.player ? '#0b4f8a' : '#374151'; ctx.fill();
+        ctx.lineWidth = 1.5; ctx.strokeStyle = '#fff'; ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.fillText(Game.s.armor[key], px, py + 0.5);
+      }
+    } else if (Game.s.armor && s >= 3) {
+      ctx.fillStyle = '#0b4f8a';
+      for (const key in Game.s.armor) {
+        const k = +key; if (own[k] !== Game.player) continue;
+        const [ax, ay] = Game.xy(k);
+        ctx.fillRect(X(ax + 0.55), Y(ay + 0.1), s * 0.35, s * 0.35);
+      }
+    }
+
     // кратеры и затопления
     for (const sc of Game.s.scars) {
       const [cx, cy] = Game.xy(sc.center);
@@ -242,8 +265,10 @@ const MapView = {
       if (!onScreen(px, py)) continue;
       const def = BUILDINGS[b.type];
       const mine = own[b.cell] === Game.player;
-      if (s >= 7 || (mine && s >= 3.5)) {
-        this.badge(ctx, b.type, def.color, px, py, bs);
+      // главные здания видны всегда, на любом зуме
+      const main = b.type !== 'shield' && b.type !== 'gen';
+      if (main || s >= 7 || (mine && s >= 3.5)) {
+        this.badge(ctx, b.type, def.color, px, py, main && s < 7 ? Math.max(11, s * 2.4) : bs);
         if (b.type === 'shield' && s >= 10) {
           ctx.font = `700 ${Math.min(12, s * 0.45)}px system-ui`;
           ctx.textAlign = 'center'; ctx.textBaseline = 'top';
@@ -400,6 +425,9 @@ const MapView = {
         bl.forEach(b => cnt[b.type] = (cnt[b.type] || 0) + 1);
         h += `<div class="bl">${Object.entries(cnt).map(([t, n]) => `<span title="${BUILDINGS[t].name}" style="background:${BUILDINGS[t].color}">${ic(t)}${n}</span>`).join('')}</div>`;
       }
+      const arm = Game.armorOf(k);
+      if (me) h += `<div class="armor">${ic('shield')} Укрепление клетки: <b>${arm}</b> ${U.plural(arm, 'удар', 'удара', 'ударов')}<small>Включи «Захват» и нажми на эту клетку — каждый заряд добавляет +1 удар, который она выдержит</small></div>`;
+      else if (arm) h += `<div class="armor">${ic('shield')} Клетка укреплена: выдержит <b>${arm}</b> ${U.plural(arm, 'удар', 'удара', 'ударов')}</div>`;
       const b = Buildings.at(k);
       if (b) {
         let extra = BUILDINGS[b.type].desc;
@@ -435,13 +463,14 @@ const MapView = {
       return;
     }
     U.$('#mode-text').innerHTML = m === 'capture'
-      ? `${ic('swords')} Нажми на чужую клетку у своей границы (${Game.s.level} кл. за заряд)`
+      ? `${ic('swords')} Чужая клетка — захват (${Game.s.level} кл.), своя — укрепить (+1 удар)`
       : `${ic(m)} Нажми на свою клетку, чтобы поставить: ${BUILDINGS[m].name.toLowerCase()}`;
     bar.classList.remove('hidden');
   },
 
   renderStats() {
     const P = Game.player, n = Game.cells(P);
+    U.$('#my-rank').textContent = '#' + Game.rank();
     const land = Game.countries.reduce((a, c) => a + (c && c.kind === 'nation' ? c.init : 0), 0);
     U.$('#map-stats').innerHTML = `${Game.flag(P)}<b>${U.esc(Game.name(P))}: ${n} кл.</b> · ${(n / land * 100).toFixed(1)}% мира · место #${Game.rank()}<br>
       Сила ${Math.round(Game.eff(P))} · ур. ${Game.s.level} · заряды ${Game.s.charges} · построек ${Buildings.owned(P).length}${Game.sick(P) ? ' · <span style="color:#9333ea">болеет</span>' : ''}`;

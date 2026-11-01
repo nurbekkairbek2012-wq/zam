@@ -492,3 +492,9 @@ body.locked .page, body.locked .tabs, body.locked .wallet { visibility: hidden; 
   .dash-total { width: 100%; margin: 0; }
   .lb { top: 60px; width: auto; right: 70px; }
 }
+
+/* укрепление клетки */
+.armor { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: #e0efff; color: #0b3d6b; font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.armor small { flex-basis: 100%; color: #52514e; font-size: 11px; }
+.rank-pill { background: #fde68a; color: #78350f; border-radius: 20px; padding: 1px 7px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.btn-tool.on .rank-pill { background: #fbbf24; color: #1f2937; }

@@ -187,6 +187,13 @@ const Buildings = {
         const k = this.freeCell(o, type);
         if (k != null && !this.canBuild(type, o, k)) this.build(type, o, k);
       }
+      if (s.dia > 40 && Math.random() < 0.02) {
+        const L = Game.lists[o];
+        for (let i = 0; i < 6; i++) {
+          const k = Game.rand(L);
+          if (Game.nbrs(k).some(n => Game.own[n] !== o && Game.own[n] !== OCEAN)) { Game.fortify(k); s.dia -= Game.COST.capture; break; }
+        }
+      }
       const up = Game.upgradeCost(s.lvl);
       if (s.lvl < 3 && s.gold >= up.g && s.dia >= up.d + 50) {
         s.dia -= up.d; s.gold -= up.g; s.lvl++;
