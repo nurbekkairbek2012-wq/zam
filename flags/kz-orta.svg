@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480">
+  <rect width="640" height="480" fill="#8b1e2d"/>
+  <rect width="80" height="480" fill="#6d1422"/>
+  <g fill="#f4c430">
+    <path d="M20 40h40v20H20zm0 60h40v20H20zm0 60h40v20H20zm0 60h40v20H20zm0 60h40v20H20zm0 60h40v20H20zm0 60h40v20H20z"/>
+    <circle cx="370" cy="240" r="70"/>
+    <g transform="translate(370 240)">
+      <path id="r" d="M-10-90 0-130 10-90z"/>
+      <use href="#r" transform="rotate(30)"/><use href="#r" transform="rotate(60)"/><use href="#r" transform="rotate(90)"/>
+      <use href="#r" transform="rotate(120)"/><use href="#r" transform="rotate(150)"/><use href="#r" transform="rotate(180)"/>
+      <use href="#r" transform="rotate(210)"/><use href="#r" transform="rotate(240)"/><use href="#r" transform="rotate(270)"/>
+      <use href="#r" transform="rotate(300)"/><use href="#r" transform="rotate(330)"/>
+    </g>
+  </g>
+  <circle cx="370" cy="240" r="42" fill="#8b1e2d"/>
+  <circle cx="370" cy="240" r="24" fill="#f4c430"/>
+</svg>

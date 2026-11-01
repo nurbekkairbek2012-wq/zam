@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Мой план</title>
+  <meta name="theme-color" content="#1f2937">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img src="icon.svg" alt=""><span>Мой план</span></div>
+    <nav class="tabs">
+      <button class="tab active" data-tab="calendar"><i data-ic="calendar"></i><span>Календарь</span></button>
+      <button class="tab" data-tab="map"><i data-ic="globe"></i><span>Карта мира</span></button>
+      <button class="tab" data-tab="dash"><i data-ic="chart"></i><span>Аналитика</span></button>
+    </nav>
+    <div class="wallet">
+      <span title="Алмазы"><i data-ic="gem" data-cls="gem"></i><b id="w-diamonds">0</b></span>
+      <span title="Золото"><i data-ic="coin" data-cls="coin"></i><b id="w-gold">0</b></span>
+      <span id="sync-status" class="sync"></span>
+      <button class="icon-btn" id="btn-settings" title="Настройки"><i data-ic="settings"></i></button>
+    </div>
+  </header>
+
+  <!-- ===== КАЛЕНДАРЬ ===== -->
+  <main id="page-calendar" class="page active">
+    <section class="cal-main">
+      <div class="cal-head">
+        <div class="cal-nav">
+          <button class="icon-btn" id="cal-prev" aria-label="Прошлый месяц"><i data-ic="left"></i></button>
+          <button class="cal-title" id="cal-title">Ноябрь 2026</button>
+          <button class="icon-btn" id="cal-next" aria-label="Следующий месяц"><i data-ic="right"></i></button>
+          <button class="btn-ghost" id="cal-today">Сегодня</button>
+        </div>
+        <button class="btn-add" id="btn-add"><i data-ic="plus"></i><span class="long-lbl">Добавить задачу</span><span class="short-lbl">Задача</span></button>
+      </div>
+      <div class="cal-weekdays">
+        <div>Пн</div><div>Вт</div><div>Ср</div><div>Чт</div><div>Пт</div><div>Сб</div><div>Вс</div>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div class="legend">
+        <span><i class="dot yellow"></i>не срочно</span>
+        <span><i class="dot orange"></i>важно</span>
+        <span><i class="dot red"></i>очень важно</span>
+        <span><i class="dot black"></i>дедлайн</span>
+        <span><i class="dot blue"></i>цель</span>
+        <span><i class="dot green"></i>отдых</span>
+        <span><i class="dot gray"></i>встреча</span>
+        <span><i class="dot school"></i>школа</span>
+      </div>
+    </section>
+    <aside class="cal-side">
+      <div class="card">
+        <h3><i data-ic="clock"></i> Сегодня</h3>
+        <div id="side-today"></div>
+      </div>
+      <div class="card">
+        <h3><i data-ic="flag"></i> Дедлайны</h3>
+        <div id="side-deadlines"></div>
+      </div>
+      <div class="card">
+        <h3><i data-ic="target"></i> Долгосрочные цели</h3>
+        <div id="side-goals"></div>
+      </div>
+      <div class="card">
+        <h3><i data-ic="calendar"></i> Ближайшие 7 дней</h3>
+        <div id="side-soon"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ===== КАРТА ===== -->
+  <main id="page-map" class="page">
+    <div class="map-area">
+      <div class="map-stats" id="map-stats"></div>
+      <div id="map-wrap"><canvas id="map"></canvas></div>
+      <div class="map-tools">
+        <button class="btn-tool shop" id="btn-shop"><i data-ic="store"></i><span>Магазин</span></button>
+        <button class="btn-tool" id="btn-lb"><i data-ic="trophy"></i><span>Лидеры</span></button>
+        <button class="btn-tool" id="btn-capture"><i data-ic="swords"></i><span>Захват</span> <b id="charges">0</b></button>
+        <button class="btn-tool" id="btn-home" title="К Казахстану"><i data-ic="crosshair"></i></button>
+        <button class="btn-tool" id="btn-zin" title="Приблизить"><i data-ic="plus"></i></button>
+        <button class="btn-tool" id="btn-zout" title="Отдалить"><i data-ic="minus"></i></button>
+        <button class="btn-tool chat-toggle" id="btn-chat" title="Хроника"><i data-ic="chat"></i></button>
+      </div>
+      <div class="mode-bar hidden" id="mode-bar"><span id="mode-text"></span><button id="mode-cancel">Отмена</button></div>
+      <div class="cell-info hidden" id="cell-info"></div>
+      <div class="lb hidden" id="lb"></div>
+    </div>
+    <aside class="chat" id="chat">
+      <div class="chat-head">
+        <h3><i data-ic="chat"></i> Хроника</h3>
+        <div class="chat-filter" id="chat-filter">
+          <button class="active" data-f="all">Все</button>
+          <button data-f="me">Мои</button>
+          <button data-f="war">Войны</button>
+          <button data-f="event">События</button>
+        </div>
+      </div>
+      <div class="chat-log" id="chat-log"></div>
+    </aside>
+  </main>
+
+  <!-- ===== АНАЛИТИКА ===== -->
+  <main id="page-dash" class="page">
+    <div class="dash">
+      <div class="dash-tabs" id="dash-tabs"></div>
+      <div id="dash-body"></div>
+    </div>
+  </main>
+
+  <div class="overlay hidden" id="overlay"></div>
+  <div class="toast" id="toast"></div>
+
+  <script src="data/world.js"></script>
+  <script src="js/icons.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/planner.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/stats.js"></script>
+  <script src="js/buildings.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/calendar.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/dash.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
