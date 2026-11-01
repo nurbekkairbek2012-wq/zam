@@ -110,6 +110,16 @@ const Dash = {
   },
   pre(i) { return Game.flag(i); },
 
+  rankMoves(before) {
+    if (!before) return Ch.empty();
+    const now = Stats.ranksNow();
+    const list = [...now.keys()].map(i => ({ i, v: Stats.rankDelta(i, now, before) })).filter(x => x.v);
+    if (!list.length) return Ch.empty('Пока никто не сдвинулся');
+    list.sort((a, b) => b.v - a.v);
+    const pick = [...list.slice(0, 8), ...list.slice(-8)].filter((x, j, a) => a.indexOf(x) === j);
+    return Ch.diverge({ items: pick.map(x => ({ label: Game.name(x.i), value: x.v, pre: Game.flag(x.i) })), fmt: v => v + ' ' + U.plural(v, 'место', 'места', 'мест') });
+  },
+
   // ---------- вкладки ----------
   overview(map) {
     const occ = this.occ(), done = occ.filter(o => o.st === 'done'), missed = occ.filter(o => o.st === 'missed');
@@ -400,6 +410,8 @@ const Dash = {
     ]) + `<div class="dgrid">`
       + this.card('Топ-15 стран по площади', Ch.hbars({ items: [...alive].sort((a, b) => Game.cells(b) - Game.cells(a)).slice(0, 15).map(i => ({ label: Game.name(i), value: Game.cells(i), pre: Game.flag(i), color: i === Game.player ? PAL[0] : '#898781' })) }))
       + this.card('Рост и падение за неделю', g7.length ? Ch.diverge({ items: [...g7.slice(0, 8), ...g7.slice(-8)].filter((x, j, a) => a.indexOf(x) === j && x.v).map(x => ({ label: Game.name(x.i), value: x.v, pre: Game.flag(x.i) })) }) : Ch.empty())
+      + this.card('Места: кто поднялся и упал с начала игры', this.rankMoves(Stats.ranksStart()), { note: 'На сколько мест в таблице по площади сдвинулась страна. Полный список — во вкладке «Все страны»' })
+      + this.card('Места: изменения за сутки', this.rankMoves(Stats.ranksDayAgo()))
       + this.card('Топ-5 стран во времени', Ch.line({ labels: this.histLabels(), series: top5.map((i, j) => ({ name: Game.name(i), color: PAL[j], values: H.map(h => Stats.decode(h)[i] || 0) })), zero: false }))
       + this.card('События по типам', Ch.bars({ items: EV_ORDER.map((t, j) => ({ label: EVENTS[t].name.split(' ')[0], value: T('ev_' + t), color: PAL[j] })) }))
       + this.card('События по дням', Ch.stack({ labels: days.map(d => U.parse(d).getDate() + ''), series: evDay }), { wide: true })
@@ -450,20 +462,21 @@ const Dash = {
   },
 
   table() {
+    const rNow = Stats.ranksNow(), rDay = Stats.ranksDayAgo(), rStart = Stats.ranksStart();
     const rows = Game.countries.map((c, i) => {
       if (!c) return null;
       const n = Game.cells(i), w = Stats.cellsAgo(i, 7 * DAY);
       const b = Buildings.owned(i).length;
       const st = Game.s.cs[i] || {};
       const status = !n ? 'погибла' : Game.sick(i) ? 'эпидемия' : st.ally != null && st.allyUntil > Date.now() ? 'союз' : c.kind === 'alien' ? 'пришельцы' : c.kind === 'rebel' ? 'повстанцы' : '';
-      return { i, name: Game.name(i), cells: n, init: c.init, d7: w == null ? null : n - w, power: Math.round(Game.eff(i)), b, status };
+      return { i, name: Game.name(i), rank: rNow.get(i) ?? null, rd1: Stats.rankDelta(i, rNow, rDay), rd0: Stats.rankDelta(i, rNow, rStart), cells: n, init: c.init, dc: n - c.init, d7: w == null ? null : n - w, power: Math.round(Game.eff(i)), b, status };
     }).filter(Boolean);
     const { key, dir } = this.sort;
     rows.sort((a, b) => ((a[key] ?? -1e9) > (b[key] ?? -1e9) ? 1 : (a[key] ?? -1e9) < (b[key] ?? -1e9) ? -1 : 0) * dir);
     const th = (k, l) => `<th data-k="${k}" class="${key === k ? 'on' : ''}">${l}${key === k ? ic(dir < 0 ? 'down' : 'up') : ''}</th>`;
     return this.card('Все страны мира', `<div class="tw"><table class="dt">
-      <thead><tr><th>#</th>${th('name', 'Страна')}${th('cells', 'Клеток')}${th('init', 'Было')}${th('d7', 'За 7 дней')}${th('power', 'Сила')}${th('b', 'Построек')}${th('status', 'Статус')}</tr></thead>
-      <tbody>${rows.map((r, j) => `<tr class="${r.i === Game.player ? 'me' : ''}"><td>${j + 1}</td><td>${Game.flag(r.i)} ${U.esc(r.name)}</td><td>${r.cells}</td><td>${r.init}</td><td>${r.d7 == null ? '—' : Ch.delta(r.d7)}</td><td>${r.power}</td><td>${r.b}</td><td>${r.status}</td></tr>`).join('')}</tbody>
+      <thead><tr>${th('rank', 'Место')}${th('name', 'Страна')}${th('rd1', 'Место за сутки')}${th('rd0', 'Место с начала')}${th('cells', 'Клеток')}${th('init', 'Было')}${th('dc', 'Клеток с начала')}${th('d7', 'За 7 дней')}${th('power', 'Сила')}${th('b', 'Построек')}${th('status', 'Статус')}</tr></thead>
+      <tbody>${rows.map(r => `<tr class="${r.i === Game.player ? 'me' : ''}"><td>${r.rank ?? '—'}</td><td>${Game.flag(r.i)} ${U.esc(r.name)}</td><td>${r.rd1 == null ? '—' : Ch.delta(r.rd1)}</td><td>${r.rd0 == null ? '—' : Ch.delta(r.rd0)}</td><td>${r.cells}</td><td>${r.init}</td><td>${Ch.delta(r.dc)}</td><td>${r.d7 == null ? '—' : Ch.delta(r.d7)}</td><td>${r.power}</td><td>${r.b}</td><td>${r.status}</td></tr>`).join('')}</tbody>
     </table></div>`, { full: true, note: 'Нажми на заголовок столбца, чтобы отсортировать' });
   },
 };

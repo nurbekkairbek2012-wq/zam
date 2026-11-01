@@ -81,6 +81,37 @@ const Stats = {
     return best;
   },
 
+  // места стран по массиву клеток: idx -> место (1 = самая большая)
+  ranksOf(counts) {
+    const order = [];
+    for (let i = 1; i < counts.length; i++) if (counts[i] > 0) order.push(i);
+    order.sort((a, b) => counts[b] - counts[a]);
+    const m = new Map();
+    order.forEach((i, r) => m.set(i, r + 1));
+    return m;
+  },
+  ranksNow() { return this.ranksOf(this.current()._c); },
+  // места в начале игры (по исходным границам)
+  ranksStart() {
+    const arr = Game.countries.map((c, i) => c && c.kind === 'nation' ? c.init : 0);
+    return this.ranksOf(arr);
+  },
+  // места сутки назад; если игре меньше суток — по самому старому снимку
+  ranksDayAgo() {
+    const h = this.st.hist;
+    if (!h.length) return null;
+    const target = Date.now() - DAY;
+    let best = h[0];
+    for (const x of h) if (x.t <= target) best = x;
+    return this.ranksOf(this.decode(best));
+  },
+  // на сколько мест поднялась страна (плюс — вверх)
+  rankDelta(i, now, before) {
+    if (!before || !now.has(i)) return null;
+    const was = before.get(i);
+    return was == null ? null : was - now.get(i);
+  },
+
   beforeSave() {
     let bin = '';
     for (let i = 0; i < this.flips.length; i += 8192) bin += String.fromCharCode.apply(null, this.flips.subarray(i, i + 8192));

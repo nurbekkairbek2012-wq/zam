@@ -39,9 +39,14 @@ const MapView = {
     };
     Game.listeners.push(() => this.onGameChange());
     this.onGameChange();
+    setInterval(() => this.skirmish(), 1800);
   },
 
   shown() {
+    const now = performance.now();
+    this.pending.forEach((f, i) => { f.t0 = now + i * 120; this.fx.push(f); });
+    this.pending = [];
+    this.animate();
     this.resize();
     if (!this.placed) { this.placed = true; this.focusPlayer(); }
     this.renderChat();
@@ -311,6 +316,8 @@ const MapView = {
       if (sick && (showName || s >= 2)) this.badge(ctx, 'virus', EVENTS.epidemic.color, px + (tw ? tw / 2 + 11 : 0), py, Math.max(14, Math.min(22, bs * 0.8)));
     }
 
+    this.drawFx(ctx, X, Y, s);
+
     // выбранная клетка
     if (this.sel != null) {
       const [sx, sy] = Game.xy(this.sel);
@@ -470,10 +477,152 @@ const MapView = {
 
   renderStats() {
     const P = Game.player, n = Game.cells(P);
-    U.$('#my-rank').textContent = '#' + Game.rank();
+    const dRank = Stats.rankDelta(P, Stats.ranksNow(), Stats.ranksDayAgo());
+    U.$('#my-rank').innerHTML = '#' + Game.rank() + (dRank ? ` <span class="mv ${dRank > 0 ? 'up' : 'down'}">${ic(dRank > 0 ? 'up' : 'down')}${Math.abs(dRank)}</span>` : '');
     const land = Game.countries.reduce((a, c) => a + (c && c.kind === 'nation' ? c.init : 0), 0);
     U.$('#map-stats').innerHTML = `${Game.flag(P)}<b>${U.esc(Game.name(P))}: ${n} кл.</b> · ${(n / land * 100).toFixed(1)}% мира · место #${Game.rank()}<br>
       Сила ${Math.round(Game.eff(P))} · ур. ${Game.s.level} · заряды ${Game.s.charges} · построек ${Buildings.owned(P).length}${Game.sick(P) ? ' · <span style="color:#9333ea">болеет</span>' : ''}`;
+  },
+
+  // ---------- анимации ----------
+  fx: [],
+  pending: [],
+  FX_MS: { gain: 1400, lost: 1800, battle: 1100, block: 1000, fortify: 1100, repel: 1000, skirmish: 1300, meteor: 2600, wave: 2400 },
+  addFx(type, cell, extra) {
+    const f = { type, cell, extra, t0: performance.now(), dur: this.FX_MS[type] || 1200 };
+    const visible = App.tab === 'map' && !document.hidden;
+    if (!visible) {
+      if (type === 'lost' || type === 'gain' || type === 'block') { this.pending.push(f); if (this.pending.length > 40) this.pending.shift(); }
+      return;
+    }
+    if (type === 'battle' && this.fx.length > 60) return;
+    this.fx.push(f);
+    if (type === 'lost') this.flashEdge = performance.now();
+    this.animate();
+  },
+  animate() {
+    if (this.animating) return;
+    this.animating = true;
+    let last = 0;
+    const loop = ts => {
+      const now = performance.now();
+      this.fx = this.fx.filter(f => now - f.t0 < f.dur);
+      const edge = this.flashEdge && now - this.flashEdge < 900;
+      if (!this.fx.length && !edge) { this.animating = false; this.render(); return; }
+      if (ts - last > 30) { last = ts; this.render(); }
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  },
+  // пограничные перестрелки — чтобы мир не был тихим (на землю не влияют)
+  skirmish() {
+    if (App.tab !== 'map' || document.hidden || Math.random() < 0.25) return;
+    const c = this.cam, W = Game.W;
+    const inView = Math.random() < 0.7;
+    for (let i = 0; i < 40; i++) {
+      let k;
+      if (inView) {
+        const x = Math.floor(c.x + Math.random() * this.cw / c.s), y = Math.floor(c.y + Math.random() * this.ch / c.s);
+        if (x < 0 || y < 0 || x >= W || y >= Game.H) continue;
+        k = y * W + x;
+      } else k = (Math.random() * Game.own.length) | 0;
+      const o = Game.own[k];
+      if (!Game.isLand(k) || o === Game.player) continue;
+      const nb = Game.nbrs(k).find(n => Game.isLand(n) && Game.own[n] !== o && Game.own[n] !== Game.player && !Game.allied(o, Game.own[n]));
+      if (nb == null) continue;
+      this.addFx('skirmish', k);
+      return;
+    }
+  },
+  drawFx(ctx, X, Y, s) {
+    const now = performance.now();
+    const cs = Math.max(s, 3);
+    for (const f of this.fx) {
+      const p = Math.max(0, (now - f.t0) / f.dur);
+      if (p <= 0 && now < f.t0) continue;
+      const [x, y] = Game.xy(f.cell);
+      const cx = X(x + 0.5), cy = Y(y + 0.5);
+      if (cx < -80 || cy < -80 || cx > this.cw + 80 || cy > this.ch + 80) continue;
+      const fade = 1 - p;
+      const ring = (color, r0, r1, w) => {
+        ctx.beginPath(); ctx.arc(cx, cy, r0 + (r1 - r0) * p, 0, Math.PI * 2);
+        ctx.strokeStyle = color; ctx.globalAlpha = fade; ctx.lineWidth = w; ctx.stroke(); ctx.globalAlpha = 1;
+      };
+      const cell = (color, a) => { ctx.globalAlpha = a; ctx.fillStyle = color; ctx.fillRect(X(x), Y(y), s, s); ctx.globalAlpha = 1; };
+      const float = (text, color) => {
+        ctx.font = `800 ${Math.max(13, Math.min(22, s * 0.8))}px system-ui`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.globalAlpha = Math.min(1, fade * 1.6);
+        ctx.lineWidth = 3; ctx.strokeStyle = '#fff';
+        const ty = cy - cs * 0.6 - p * Math.max(24, s * 1.4);
+        ctx.strokeText(text, cx, ty); ctx.fillStyle = color; ctx.fillText(text, cx, ty);
+        ctx.globalAlpha = 1;
+      };
+      const pop = (icon, color, size) => {
+        const img = Icons.badge(icon, color);
+        if (!img) return;
+        const sc = p < 0.2 ? p / 0.2 : 1;
+        const sz = size * (0.6 + 0.4 * sc);
+        ctx.globalAlpha = Math.min(1, fade * 1.5);
+        ctx.drawImage(img, cx - sz / 2, cy - sz / 2, sz, sz);
+        ctx.globalAlpha = 1;
+      };
+      switch (f.type) {
+        case 'gain':
+          cell('#22c55e', 0.85 * fade);
+          ring('#16a34a', cs * 0.4, cs * 2.4, 3);
+          float('+1', '#15803d');
+          break;
+        case 'lost': {
+          const blink = 0.5 + 0.5 * Math.sin(p * Math.PI * 8);
+          cell('#ef4444', 0.9 * fade * blink);
+          ring('#dc2626', cs * 0.4, cs * 3, 3);
+          float('−1', '#b91c1c');
+          break;
+        }
+        case 'battle':
+          cell('#f97316', 0.6 * fade);
+          ring('#ea580c', cs * 0.3, cs * 1.6, 2);
+          break;
+        case 'block':
+          ring('#2563eb', cs * 0.3, cs * 1.8, 3);
+          pop('shield', '#2563eb', Math.max(16, Math.min(30, s * 1.2)));
+          break;
+        case 'repel':
+          ring('#6b7280', cs * 0.3, cs * 1.8, 3);
+          float('отбито', '#374151');
+          break;
+        case 'fortify':
+          ring('#0b4f8a', cs * 1.6, cs * 0.3, 2.5);
+          float('+1', '#0b4f8a');
+          break;
+        case 'skirmish':
+          pop('swords', '#b91c1c', Math.max(12, Math.min(26, s * 1.1)));
+          ring('rgba(185,28,28,.8)', cs * 0.2, cs * 1.2, 1.5);
+          break;
+        case 'meteor':
+          ctx.beginPath(); ctx.arc(cx, cy, cs * (1 + 5 * p), 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(249,115,22,${0.35 * fade})`; ctx.fill();
+          ring('#b45309', cs, cs * 7, 4);
+          pop('meteor', '#b45309', Math.max(20, Math.min(40, s * 1.6)));
+          break;
+        case 'wave':
+          ring('#0284c7', cs, cs * 8, 4);
+          ring('#38bdf8', cs * 0.5, cs * 5, 2);
+          pop('wave', '#0284c7', Math.max(20, Math.min(40, s * 1.6)));
+          break;
+      }
+    }
+    // красная подсветка краёв, когда у тебя отнимают землю
+    if (this.flashEdge) {
+      const q = (now - this.flashEdge) / 900;
+      if (q < 1) {
+        const g = ctx.createRadialGradient(this.cw / 2, this.ch / 2, Math.min(this.cw, this.ch) * 0.35, this.cw / 2, this.ch / 2, Math.max(this.cw, this.ch) * 0.75);
+        g.addColorStop(0, 'rgba(220,38,38,0)');
+        g.addColorStop(1, `rgba(220,38,38,${0.35 * (1 - q)})`);
+        ctx.fillStyle = g; ctx.fillRect(0, 0, this.cw, this.ch);
+      }
+    }
   },
 
   // топ-10 стран по площади; если тебя нет в топе — 11-я строка с твоим местом
@@ -484,11 +633,21 @@ const MapView = {
     if (!this.lbOpen) return;
     const rows = Game.countries.map((c, i) => [i, c ? Game.cells(i) : 0]).filter(([i, n]) => n > 0).sort((a, b) => b[1] - a[1]);
     const P = Game.player;
-    const row = ([i, n], r) => `<tr class="${i === P ? 'me' : ''}"><td>${r}</td><td>${Game.flag(i)}</td><td>${U.esc(Game.name(i))}</td><td>${n}</td></tr>`;
-    let body = rows.slice(0, 10).map((x, r) => row(x, r + 1)).join('');
+    const now = Stats.ranksNow(), dayAgo = Stats.ranksDayAgo();
+    const mv = i => {
+      const d = Stats.rankDelta(i, now, dayAgo);
+      if (!d) return '<span class="mv zero">–</span>';
+      return `<span class="mv ${d > 0 ? 'up' : 'down'}" title="${d > 0 ? 'поднялась' : 'опустилась'} на ${Math.abs(d)} за сутки">${ic(d > 0 ? 'up' : 'down')}${Math.abs(d)}</span>`;
+    };
+    const row = ([i, n], r) => `<tr class="${i === P ? 'me' : ''}"><td>${r}</td><td>${mv(i)}</td><td>${Game.flag(i)}</td><td>${U.esc(Game.name(i))}</td><td>${n}</td></tr>`;
     const myRank = rows.findIndex(([i]) => i === P);
-    if (myRank >= 10) body += `<tr class="gap"><td colspan="4">⋯</td></tr>` + row(rows[myRank], myRank + 1);
-    el.innerHTML = `<div class="lb-head">${ic('trophy')} Топ стран по площади <button id="lb-x">${ic('x')}</button></div><table><thead><tr><th>#</th><th></th><th>Страна</th><th>Клеток</th></tr></thead><tbody>${body}</tbody></table>`;
+    const old = U.$('.lb-scroll', el);
+    const scroll = old ? old.scrollTop : 0;
+    el.innerHTML = `<div class="lb-head">${ic('trophy')} Страны по площади <button id="lb-x">${ic('x')}</button></div>
+      <div class="lb-sub">Стрелка — на сколько мест страна сдвинулась за сутки. Листай вниз, чтобы увидеть всех</div>
+      <div class="lb-scroll"><table><thead><tr><th>#</th><th></th><th></th><th>Страна</th><th>Клеток</th></tr></thead><tbody>${rows.map((x, r) => row(x, r + 1)).join('')}</tbody></table></div>
+      ${myRank >= 10 ? `<table class="lb-me"><tbody>${row(rows[myRank], myRank + 1)}</tbody></table>` : ''}`;
+    U.$('.lb-scroll', el).scrollTop = scroll;
     U.$('#lb-x').onclick = () => { this.lbOpen = false; this.renderLeaderboard(); };
   },
 

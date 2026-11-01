@@ -45,8 +45,13 @@ const Sync = {
     if (!this.KEYS.includes(key) || this.applying) return;
     localStorage.setItem('sync.updated', Date.now());
     this.dirty = true;
+    // задачи отправляем сразу, а игру (она меняется каждую минуту) — не чаще раза в 20 с
+    const delay = key === 'game.state' ? 20000 : 1500;
+    const at = Date.now() + delay;
+    if (this._t && this._at <= at) return;
     clearTimeout(this._t);
-    this._t = setTimeout(() => this.push(), 1500);
+    this._at = at;
+    this._t = setTimeout(() => { this._t = null; this.push(); }, delay);
   },
 
   apply(srv) {

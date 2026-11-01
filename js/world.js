@@ -30,23 +30,31 @@ const World = {
     this.respawns();
 
     const out = [];
-    let nb = Math.floor(this.BATTLES_PER_TICK) + (Math.random() < this.BATTLES_PER_TICK % 1 ? 1 : 0);
+    const f = G.tickFrac();
+    const want = this.BATTLES_PER_TICK * f;
+    let nb = Math.floor(want) + (Math.random() < want % 1 ? 1 : 0);
     while (nb-- > 0) { const r = this.battle(counts); if (r) out.push(r); }
+    // каждую минуту где-то в мире обязательно захватывается хотя бы 1 клетка
+    let captured = out.some(r => r.n > 0);
+    const pBack = Math.min(0.7, 0.15 + G.occ.size / 400);
+    if (!captured && Math.random() < pBack) { const r = this.reclaim(); if (r) { out.push(r); captured = true; } }
+    for (let i = 0; i < 8 && !captured; i++) { const r = this.battle(counts); if (r) { out.push(r); captured = r.n > 0; } }
+    if (!captured) { const r = this.forceCapture(); if (r) out.push(r); }
     // казармы и космодромы ИИ
     G.countries.forEach((c, o) => {
       if (!G.ai(o)) return;
       const s = G.st(o);
-      if (s.free > 0 && Math.random() < 1 / 12) {
+      if (s.free > 0 && Math.random() < f / 12) {
         s.free--;
         const r = this.battle(counts, o); if (r) out.push(r);
       }
-      if ((counts.get(o) || {}).cosmo && Buildings.cosmoReady(o) && Math.random() < 1 / 24) {
+      if ((counts.get(o) || {}).cosmo && Buildings.cosmoReady(o) && Math.random() < f / 24) {
         const r = this.cosmoStrike(o); if (r) out.push(r);
       }
     });
 
     for (const [type, ev] of Object.entries(EVENTS)) {
-      if (Math.random() < ev.chance) this.start(type);
+      if (Math.random() < ev.chance * f) this.start(type);
     }
     out.forEach(r => { r.t = t; Stats.bump('battles'); if (r.d === G.player) Stats.bump('battles_vs_me'); });
     return out;
@@ -62,7 +70,8 @@ const World = {
       G.countries.forEach((c, i) => {
         if (!G.ai(i)) return;
         const b = counts.get(i) || {};
-        const w = G.eff(i) ** 1.5 * (1 + 0.3 * (b.mine || 0) + 0.2 * (b.oil || 0)) * (c.kind === 'alien' ? 4 : 1);
+        const over = Math.max(1, G.cells(i) / Math.max(1, c.init));
+        const w = G.eff(i) ** 1.5 * (1 + 0.3 * (b.mine || 0) + 0.2 * (b.oil || 0)) * (c.kind === 'alien' ? 4 : 1) / (over * over);
         pool.push([i, w]); total += w;
       });
       if (!pool.length) return null;
@@ -90,10 +99,10 @@ const World = {
     }
     if (!fronts.length) return null;
     const cell = G.rand(fronts), d = G.own[cell];
-    if (G.cells(d) <= 3 && Math.random() < 0.7) return null; // маленьких добивают редко
+    if (G.cells(d) <= 4 && Math.random() < 0.92) return null; // маленьких добивают редко
 
     this.contagion(a, d);
-    const A = G.eff(a) * (G.s.buildings.some(b => b.type === 'fort' && b.cell === cell) ? 0.6 : 1);
+    const A = G.eff(a) * (G.s.buildings.some(b => b.type === 'fort' && b.cell === cell) ? 0.6 : 1) * (G.orig[cell] === a ? 1.8 : 1);
     const D = G.defense(d);
     if (Math.random() < A * A / (A * A + D * D)) {
       const lvl = G.level(a);
@@ -112,6 +121,42 @@ const World = {
     }
     return null;
   },
+  // возврат: исконный хозяин отбивает свою клетку обратно (у игрока не отбирают)
+  reclaim() {
+    const G = Game;
+    if (!G.occ.size) return null;
+    const list = [...G.occ];
+    for (let i = 0; i < 25; i++) {
+      const k = list[(Math.random() * list.length) | 0];
+      const holder = G.own[k], home = G.orig[k];
+      if (holder === G.player || !G.cells(home) || G.allied(home, holder)) continue;
+      if (!G.nbrs(k).some(n => G.own[n] === home)) continue;
+      if (G.tryTake(home, k) === 'ok') {
+        G.checkDeath(holder, home);
+        return { a: home, d: holder, n: 1, back: true };
+      }
+    }
+    return null;
+  },
+
+  // запасной вариант: на случайной границе более сильная страна берёт 1 клетку
+  forceCapture() {
+    const G = Game;
+    for (let i = 0; i < 400; i++) {
+      const k = (Math.random() * G.own.length) | 0;
+      const o = G.own[k];
+      if (!G.isLand(k) || o === G.player) continue;
+      const nb = G.nbrs(k).find(n => G.isLand(n) && G.own[n] !== o && G.own[n] !== G.player && !G.allied(o, G.own[n]));
+      if (nb == null) continue;
+      const other = G.own[nb];
+      const [a, d, cell] = G.eff(o) >= G.eff(other) ? [o, other, nb] : [other, o, k];
+      if (G.cells(d) <= 6) continue;
+      const n = G.grab(a, d, cell, 1);
+      if (n) return { a, d, n };
+    }
+    return null;
+  },
+
   cosmoStrike(a) {
     const G = Game;
     Buildings.useCosmo(a);
@@ -213,6 +258,7 @@ const World = {
     G.cause = null;
     Stats.event('meteor', center);
     G.s.scars.push({ kind: 'crater', cells, prev, at, center });
+    G.fx('meteor', center);
     G.log(`Метеорит! Удар по стране ${G.c(victim)} — выжжено ${cells.length} ${U.plural(cells.length, 'клетка', 'клетки', 'клеток')}${mine ? `, из них ${mine} твоих` : ''}${lostB ? `, разрушено построек: ${lostB}` : ''}. Земля будет понемногу восстанавливаться неделю`, mine ? 'loss' : 'event', 'meteor');
   },
 
@@ -237,6 +283,7 @@ const World = {
     G.cause = null;
     Stats.event('tsunami', center);
     G.s.scars.push({ kind: 'flood', cells, prev, at, center });
+    G.fx('wave', center);
     G.log(`Цунами обрушилось на побережье ${G.c(victim)}: затоплено ${cells.length} ${U.plural(cells.length, 'клетка', 'клетки', 'клеток')}${mine ? `, из них ${mine} твоих` : ''}${lostB ? `, разрушено построек: ${lostB}` : ''}. Вода уйдёт через 4 дня`, mine ? 'loss' : 'event', 'wave');
   },
 
@@ -274,11 +321,15 @@ const World = {
     const G = Game;
     G.s.hurricanes = G.s.hurricanes.filter(h => {
       if (G.t <= h.end) {
-        h.ang += (Math.random() - 0.5) * 0.8;
-        h.x = Math.max(1, Math.min(G.W - 2, h.x + Math.cos(h.ang) * 1.5));
-        h.y = Math.max(1, Math.min(G.H - 2, h.y + Math.sin(h.ang) * 1.5));
+        const f = G.tickFrac();
+        h.ang += (Math.random() - 0.5) * 0.8 * Math.sqrt(f);
+        h.x = Math.max(1, Math.min(G.W - 2, h.x + Math.cos(h.ang) * 1.5 * f));
+        h.y = Math.max(1, Math.min(G.H - 2, h.y + Math.sin(h.ang) * 1.5 * f));
         if (h.x <= 1 || h.x >= G.W - 2) h.ang = Math.PI - h.ang;
         if (h.y <= 1 || h.y >= G.H - 2) h.ang = -h.ang;
+        h.acc = (h.acc || 0) + f;
+        if (h.acc < 1) return true; // путь и разрушения — раз в «полчаса» урагана
+        h.acc = 0;
         h.path.push([+h.x.toFixed(2), +h.y.toFixed(2)]);
         const k = Math.round(h.y) * G.W + Math.round(h.x);
         const hit = [];
@@ -292,7 +343,7 @@ const World = {
           else broken.push(b);
         }
         if (broken.length) { h.broke += broken.length; Buildings.remove(broken, 'ураган'); }
-        if (G.t + G.TICK_MS > h.end) G.log(`Ураган затих${h.broke ? `, успев разрушить построек: ${h.broke}` : ''}`, 'event', 'hurricane');
+        if (G.t + G.BASE_TICK_MS > h.end) G.log(`Ураган затих${h.broke ? `, успев разрушить построек: ${h.broke}` : ''}`, 'event', 'hurricane');
       }
       return G.t < h.end + DAY; // след виден ещё сутки
     });

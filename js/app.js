@@ -47,7 +47,7 @@ const App = {
     Sync.start();
 
     this.day = U.today();
-    setInterval(() => this.heartbeat(), 30000);
+    setInterval(() => this.heartbeat(), 15000);
     Tip.init();
     if (location.hash === '#map' || location.hash === '#dash') this.show(location.hash.slice(1));
   },

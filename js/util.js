@@ -32,9 +32,9 @@ const U = {
     try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; }
   },
   save(key, val) {
-    if (window.Sync && Sync.applying) return; // идёт загрузка данных с другого устройства
+    if (typeof Sync !== 'undefined' && Sync.applying) return; // идёт загрузка данных с другого устройства
     try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { console.warn('save failed', e); }
-    window.Sync && Sync.touch(key);
+    if (typeof Sync !== 'undefined') Sync.touch(key);
   },
 
   esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },

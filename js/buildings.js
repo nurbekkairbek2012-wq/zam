@@ -182,12 +182,12 @@ const Buildings = {
       s.dia += (1 + c.base / 10) * (1 + 0.2 * (b.oil || 0)) * perTick;
       if (b.bank) s.dia += s.dia * 0.02 * Math.min(3, b.bank) * perTick;
       s.dia = Math.min(600, s.dia);
-      if (Math.random() < 0.03) {
+      if (Math.random() < 0.03 * Game.tickFrac()) {
         const type = this.pick(this.weights(o));
         const k = this.freeCell(o, type);
         if (k != null && !this.canBuild(type, o, k)) this.build(type, o, k);
       }
-      if (s.dia > 40 && Math.random() < 0.02) {
+      if (s.dia > 40 && Math.random() < 0.02 * Game.tickFrac()) {
         const L = Game.lists[o];
         for (let i = 0; i < 6; i++) {
           const k = Game.rand(L);

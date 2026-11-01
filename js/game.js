@@ -21,8 +21,9 @@ const SHORT_NAMES = {
 };
 
 const Game = {
-  TICK_MS: 30 * 60e3,
-  MAX_CATCHUP_TICKS: 144, // не больше 3 суток догонялки
+  TICK_MS: 60e3,            // мир делает шаг каждую минуту
+  BASE_TICK_MS: 30 * 60e3,  // под этот шаг подобраны шансы событий
+  MAX_CATCHUP_TICKS: 4320,  // не больше 3 суток догонялки
   COST: { capture: 2 },
   START_DIAMONDS: 20,
 
@@ -65,6 +66,8 @@ const Game = {
     this.countries.forEach(c => { if (c) c.rgb = [1, 3, 5].map(k => parseInt(c.color.slice(k, k + 2), 16)); });
     this.rebuildLists();
     this.findCapitals();
+    this.occ = new Set();
+    for (let k = 0; k < this.own.length; k++) if (this.isOccupied(k)) this.occ.add(k);
     Stats.init();
     if (!this.s.log.length) {
       this.t = Date.now();
@@ -112,6 +115,10 @@ const Game = {
     }
     this.own[k] = o;
     if (this.s.armor && this.s.armor[k]) delete this.s.armor[k];
+    if (this.occ) { if (this.isOccupied(k)) this.occ.add(k); else this.occ.delete(k); }
+    if (old === this.player && o !== this.player) this.fx('lost', k);
+    else if (o === this.player && old !== this.player && old !== OCEAN && old < FLOOD) this.fx('gain', k);
+    else if (old !== OCEAN && old < FLOOD && o !== OCEAN && o < FLOOD) this.fx('battle', k);
     Stats.cell(k, old, o);
     if (o !== OCEAN && o < FLOOD) { this.pos[k] = this.lists[o].length; this.lists[o].push(k); }
     this.dirtyCells.push(k);
@@ -127,7 +134,7 @@ const Game = {
     for (let i = 0; i < this.own.length; i += 8192) bin += String.fromCharCode.apply(null, this.own.subarray(i, i + 8192));
     this.s.owners = btoa(bin);
     Stats.beforeSave();
-    if (this.s.log.length > 500) this.s.log = this.s.log.slice(-500);
+    if (this.s.log.length > 1500) this.s.log = this.s.log.slice(-1500);
     U.save('game.state', this.s);
   },
   changed() { this.save(); this.listeners.forEach(f => f()); },
@@ -138,6 +145,11 @@ const Game = {
     if (!this.batch) this.changed();
   },
   c(i) { return `[[c:${i}]]`; },
+
+  // доля «базового» получасового шага в одном шаге мира
+  tickFrac() { return this.TICK_MS / this.BASE_TICK_MS; },
+  // анимация на карте (при долгой догонялке не показываем)
+  fx(type, cell, extra) { if (this.fxOn !== false && typeof MapView !== 'undefined' && MapView.canvas) MapView.addFx(type, cell, extra); },
 
   // ---------- помощники ----------
   xy(k) { return [k % this.W, (k / this.W) | 0]; },
@@ -158,6 +170,8 @@ const Game = {
       fn(y * this.W + x);
     }
   },
+  // клетка в чужих руках: владелец не тот, кому она принадлежала изначально
+  isOccupied(k) { const o = this.own[k]; return o !== OCEAN && o < FLOOD && this.orig[k] && o !== this.orig[k]; },
   isLand(k) { const o = this.own[k]; return o !== OCEAN && o < FLOOD; },
   coastal(k) { return this.nbrs(k).some(n => this.own[n] === OCEAN); },
   name(i) {
@@ -190,7 +204,7 @@ const Game = {
 
   eff(i) {
     const c = this.countries[i];
-    const ratio = Math.min(1.6, Math.sqrt(this.cells(i) / Math.max(1, c.init)));
+    const ratio = Math.min(1, Math.sqrt(this.cells(i) / Math.max(1, c.init)));
     let p = c.base * (0.55 + 0.45 * ratio) * (1 + 0.1 * (this.level(i) - 1));
     if (this.sick(i)) p *= 0.6;
     return p;
@@ -228,6 +242,7 @@ const Game = {
   fortify(k, n = 1) {
     this.s.armor = this.s.armor || {};
     this.s.armor[k] = (this.s.armor[k] || 0) + n;
+    this.fx('fortify', k);
   },
   // попытка забрать клетку k: 'ok' | 'fort' | 'shield' | 'last' | 'no'
   tryTake(att, k) {
@@ -236,8 +251,8 @@ const Game = {
     if (o === this.player && this.cells(o) <= 1) return 'last';
     if (this.fortGuard(k)) return 'fort';
     const sh = this.shieldFor(k);
-    if (sh) { sh.hp--; this.breakShieldIfDead(sh); return 'shield'; }
-    if (this.armorOf(k)) { this.s.armor[k]--; if (!this.s.armor[k]) delete this.s.armor[k]; if (o === this.player) Stats.bump('armor_used'); return 'armor'; }
+    if (sh) { sh.hp--; this.breakShieldIfDead(sh); this.fx('block', k); return 'shield'; }
+    if (this.armorOf(k)) { this.s.armor[k]--; if (!this.s.armor[k]) delete this.s.armor[k]; if (o === this.player) Stats.bump('armor_used'); this.fx('block', k); return 'armor'; }
     this.setOwner(k, att);
     return 'ok';
   },
@@ -379,6 +394,7 @@ const Game = {
     if (this.s.buildings.some(b => b.type === 'fort' && b.cell === k)) chance *= 0.5;
     if (Math.random() > chance) {
       Stats.bump('atk_fail');
+      this.fx('repel', k);
       this.log(`${this.c(def)} отбила твою атаку (шанс был ${Math.round(chance * 100)}%)`, 'me', 'shield', Date.now());
       return true;
     }
@@ -455,6 +471,7 @@ const Game = {
     const before = this.countries.map((c, i) => c ? this.cells(i) : 0);
     const battles = [];
     this.batch = true;
+    this.fxOn = due <= 12;
     try {
       for (let i = 1; i <= due; i++) {
         this.t = t0 + i * this.TICK_MS;
@@ -463,16 +480,18 @@ const Game = {
       this.s.lastTick = t0 + due * this.TICK_MS;
       this.t = now;
       Bank.accrue(now);
-      if (due <= 2) battles.forEach(b => this.logBattle(b));
+      if (due <= 12) battles.forEach(b => this.logBattle(b));
       else this.summary(before, due);
       this.s.log.sort((a, b) => a.t - b.t);
-    } finally { this.batch = false; }
+    } finally { this.batch = false; this.fxOn = true; }
     this.changed();
   },
   logBattle(r) {
     if (!r.n) return;
     const word = U.plural(r.n, 'клетку', 'клетки', 'клеток');
-    this.log(r.counter
+    this.log(r.back
+      ? `${this.c(r.a)} отбила обратно ${r.n} ${word} у ${this.c(r.d)}`
+      : r.counter
       ? `${this.c(r.a)} отбила атаку и отняла ${r.n} ${word} у ${this.c(r.d)}`
       : `${this.c(r.a)} захватила ${r.n} ${word} у ${this.c(r.d)}${r.how ? ` (${r.how})` : ''}`, r.d === this.player ? 'loss' : 'war', 'swords', r.t);
   },
