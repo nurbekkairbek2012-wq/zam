@@ -43,6 +43,7 @@ const Planner = {
     this.save();
   },
   remove(id) {
+    this.tasks.forEach(t => { if (t.parent === id) delete t.parent; }); // задачи цели остаются сами по себе
     this.tasks = this.tasks.filter(t => t.id !== id);
     this.save();
   },
@@ -77,6 +78,34 @@ const Planner = {
     return Math.max(0, U.toMin(t.end) - U.toMin(t.start)) / 60;
   },
   reward(t) { return t.type === 'rest' ? 0 : Math.round(this.DIAMONDS_PER_HOUR * this.hours(t)); },
+
+  // ---------- задачи внутри долгосрочной цели ----------
+  children(goal) { return this.tasks.filter(t => t.parent === goal.id); },
+  goals() { return this.tasks.filter(t => t.type === 'long' && !t.goalDone && !t.goalMissed); },
+  // прогресс цели: её дни + все задачи внутри неё
+  goalProgress(goal) {
+    let done = Object.keys(goal.done).length, total = goal.dates.length;
+    for (const c of this.children(goal)) { total += c.dates.length; done += Object.keys(c.done).length; }
+    return { done, total };
+  },
+  overlapH(a, b) {
+    if (a.type === 'deadline' || b.type === 'deadline' || a.allDay || b.allDay) return 0;
+    return Math.max(0, Math.min(U.toMin(a.end), U.toMin(b.end)) - Math.max(U.toMin(a.start), U.toMin(b.start))) / 60;
+  },
+  // алмазы не складываются: часы, уже оплаченные целью или её задачей в тот же день, второй раз не платятся
+  paidOverlap(t, date) {
+    let h = 0;
+    if (t.parent) {
+      const g = this.get(t.parent);
+      if (g && g.done[date]) h += this.overlapH(t, g);
+    }
+    if (t.type === 'long') for (const c of this.children(t)) if (c.done[date]) h += this.overlapH(t, c);
+    return Math.min(this.hours(t), h);
+  },
+  rewardFor(t, date) {
+    if (t.type === 'rest') return 0;
+    return Math.round(this.DIAMONDS_PER_HOUR * Math.max(0, this.hours(t) - this.paidOverlap(t, date)));
+  },
   startOf(t, date) {
     if (t.type === 'deadline') return new Date(t.createdAt);
     return U.at(date, t.allDay ? '00:00' : t.start);
@@ -106,12 +135,13 @@ const Planner = {
     } else {
       const c = this.canMarkDone(t, date);
       if (!c.ok) { U.toast(c.why); return false; }
-      const base = this.reward(t);
+      const base = this.rewardFor(t, date);
       const r = Game.taskReward(base);
+      const cut = this.reward(t) - base;
       t.done[date] = Date.now();
       t.paid[date] = r;
       if (r > base) { Stats.bump('earn_task', base - r); Stats.bump('earn_oil', r - base); }
-      Game.addDiamonds(r, `Выполнено «${t.title}» (${this.hours(t)} ч): +${r} алм.${r > base ? ` (нефть +${r - base})` : ''}`, 'reward', 'check');
+      Game.addDiamonds(r, `Выполнено «${t.title}» (${this.hours(t)} ч): +${r} алм.${r > base ? ` (нефть +${r - base})` : ''}${cut > 0 ? ` (−${cut}: эти часы уже оплачены в цели)` : ''}`, 'reward', 'check');
     }
     this.save();
     return true;

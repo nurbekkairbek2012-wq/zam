@@ -24,6 +24,7 @@ const MapView = {
     new ResizeObserver(() => this.resize()).observe(this.wrap);
     this.bindInput();
     U.$('#btn-shop').onclick = () => this.shop();
+    U.$('#btn-diplo').onclick = () => this.diplomacy();
     U.$('#btn-capture').onclick = () => this.setMode(this.mode === 'capture' ? null : 'capture');
     U.$('#btn-home').onclick = () => this.focusPlayer();
     U.$('#btn-zin').onclick = () => this.zoomAt(this.cw / 2, this.ch / 2, this.cam.s * 1.4);
@@ -426,6 +427,12 @@ const MapView = {
       if (Game.sick(o)) h += `<div class="tag purple">${ic('virus')} Эпидемия: сила −40%</div>`;
       if (st.ally != null && st.allyUntil > Date.now()) h += `<div class="tag blue">${ic('ally')} Союз с ${this.chip(st.ally)}</div>`;
       if (c.kind === 'alien') h += `<div class="tag green">${ic('ufo')} Сильны в атаке, слабы в обороне</div>`;
+      Diplo.warsOf(o).forEach(w => { const e = Diplo.enemy(w, o); h += `<div class="tag red">${ic('swords')} Война с ${this.chip(e)} до ${U.stamp(w.until)}</div>`; });
+      if (!me) { const tr = Diplo.truce(Game.player, o); if (tr) h += `<div class="tag blue">${ic('peace')} Перемирие с тобой до ${U.stamp(tr.until)}</div>`; }
+      if (!me && Game.angry(o)) h += `<div class="tag red">${ic('alert')} Обижена на тебя и мстит</div>`;
+      if (!me && c.kind !== 'alien') h += Diplo.atWar(o, Game.player)
+        ? `<button class="btn primary" style="margin-top:8px;width:100%" data-dip="wars" data-c="${o}">${ic('peace')} Предложить мир</button>`
+        : `<button class="btn" style="margin-top:8px;width:100%" data-dip="allies" data-c="${o}">${ic('ally')} Предложить союз</button>`;
       const bl = Buildings.owned(o);
       if (bl.length) {
         const cnt = {};
@@ -454,6 +461,7 @@ const MapView = {
     box.innerHTML = `<button class="close" id="ci-x">${ic('x')}</button>${h}`;
     box.classList.remove('hidden');
     U.$('#ci-x').onclick = () => { box.classList.add('hidden'); this.sel = null; this.draw(); };
+    U.$$('[data-dip]', box).forEach(b => b.onclick = () => this.diplomacy(b.dataset.dip, +b.dataset.c));
   },
 
   setMode(m) {
@@ -477,6 +485,9 @@ const MapView = {
 
   renderStats() {
     const P = Game.player, n = Game.cells(P);
+    const unread = Diplo.unread(), mc = U.$('#mail-count');
+    mc.textContent = unread; mc.classList.toggle('hidden', !unread);
+    U.$('#btn-diplo').classList.toggle('alert', Diplo.warsOf(P).length > 0);
     const dRank = Stats.rankDelta(P, Stats.ranksNow(), Stats.ranksDayAgo());
     U.$('#my-rank').innerHTML = '#' + Game.rank() + (dRank ? ` <span class="mv ${dRank > 0 ? 'up' : 'down'}">${ic(dRank > 0 ? 'up' : 'down')}${Math.abs(dRank)}</span>` : '');
     const land = Game.countries.reduce((a, c) => a + (c && c.kind === 'nation' ? c.init : 0), 0);
@@ -724,6 +735,91 @@ const MapView = {
         if (e.target.id !== 'bk-amount' && e.target.id !== 'bk-days') return;
         const a = +U.$('#bk-amount', root).value || 0, d = +U.$('#bk-days', root).value;
         U.$('#bk-calc', root).textContent = a >= 10 ? `Через ${d} ${U.plural(d, 'день', 'дня', 'дней')} получишь ${Math.round(a * (1 + Bank.rate(a, d)))} алм. (${Math.round(Bank.rate(a, d) * 100)}%)` : 'Минимум 10 алмазов';
+      };
+    }, 'wide');
+  },
+
+  // ---------- дипломатия ----------
+  diplomacy(tab = 'mail', focus = null) {
+    const P = Game.player;
+    const offerForm = (kind, i) => `<div class="row offer">
+        <input class="input" type="number" min="0" placeholder="Алмазы" data-d>
+        <input class="input" type="number" min="0" placeholder="Золото" data-g>
+        <button class="btn primary" data-act="${kind}" data-c="${i}">${kind === 'peace' ? ic('peace') + ' Мир' : ic('ally') + ' Союз'}</button></div>`;
+    const draw = root => {
+      U.$$('.stabs button', root).forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      let h = '';
+      if (tab === 'mail') {
+        const list = [...Game.s.mail].reverse();
+        h = list.map(m => {
+          const act = m.status === 'new' && ['peace', 'alliance', 'gift'].includes(m.kind);
+          const kindName = { peace: 'Мир', alliance: 'Союз', gift: 'Подарок', war: 'Объявление войны', letter: 'Письмо' }[m.kind] || 'Письмо';
+          const st = { accepted: 'принято', declined: 'отклонено', expired: 'истекло' }[m.status];
+          return `<div class="letter ${m.status} k-${m.kind}"><div class="lh">${this.chip(m.from)}<span class="lk">${kindName}</span><time>${U.stamp(m.t)}</time></div>
+            <div class="lt">${U.esc(m.text)}</div>
+            ${m.offer && (m.offer.give || m.offer.ask) ? `<div class="lo">${U.esc(Diplo.offerText(m.offer))}</div>` : ''}
+            ${act ? `<div class="actions"><button class="btn primary grow" data-ans="${m.id}" data-yes="1">${m.kind === 'gift' ? 'Принять подарок' : 'Принять'}</button>${m.kind !== 'gift' ? `<button class="btn grow" data-ans="${m.id}">Отклонить</button>` : ''}</div>${m.until ? `<div class="hint">Действует до ${U.stamp(m.until)}</div>` : ''}` : st ? `<div class="hint">${st}</div>` : ''}
+          </div>`;
+        }).join('') || '<div class="empty">Писем пока нет. Страны пишут сами: предлагают мир, союз, присылают подарки или угрожают.</div>';
+        Game.s.mail.forEach(m => { if (m.status === 'new' && !['peace', 'alliance', 'gift'].includes(m.kind)) m.status = 'read'; });
+      }
+      if (tab === 'wars') {
+        const ws = Diplo.warsOf(P);
+        h = ws.map(w => {
+          const e = Diplo.enemy(w, P);
+          return `<div class="warcard ${focus === e ? 'focus' : ''}"><div class="lh">${ic('swords')} Война с ${this.chip(e)}<time>до ${U.stamp(w.until)}</time></div>
+            <div class="hint">Причина: ${U.esc(w.reason)}. Ты взял ${Diplo.won(w, P)} кл., враг — ${Diplo.won(w, e)} кл. Сила врага ${Math.round(Game.eff(e))}, твоя ${Math.round(Game.eff(P))}.</div>
+            <div class="hint">Предложи алмазы или золото (1 золото ≈ ${GOLD_VALUE} алм.). Чем сильнее враг и чем лучше у него дела на войне, тем больше он попросит. Если согласится — перемирие на ${Diplo.TRUCE_DAYS} дня, нападать друг на друга нельзя.</div>
+            ${offerForm('peace', e)}</div>`;
+        }).join('') || '<div class="empty">Ты ни с кем не воюешь в долгой войне. Война начинается, если страна сильно обиделась на твои нападения или решила напасть сама.</div>';
+        const tr = Game.s.truces.filter(x => (x.a === P || x.b === P) && x.until > Date.now());
+        if (tr.length) h += '<h4 class="dh">Перемирия</h4>' + tr.map(x => `<div class="dep">${this.chip(x.a === P ? x.b : x.a)}<small>до ${U.stamp(x.until)}</small></div>`).join('');
+      }
+      if (tab === 'allies') {
+        const ally = Diplo.myAlly();
+        h = ally != null
+          ? `<div class="warcard"><div class="lh">${ic('ally')} Твой союзник: ${this.chip(ally)}<time>до ${U.stamp(Game.s.cs[P].allyUntil)}</time></div><div class="hint">Не нападает на тебя и помогает в твоих атаках.</div></div>`
+          : '<div class="hint">Союзника нет. Союзник не нападает на тебя и помогает захватывать. Предложи соседу плату за союз на 2 дня.</div>';
+        if (ally == null) {
+          const nb = Diplo.neighbours(P).filter(i => !Diplo.atWar(i, P)).sort((a, b) => (b === focus) - (a === focus));
+          h += nb.map(i => `<div class="warcard ${focus === i ? 'focus' : ''}"><div class="lh">${this.chip(i)}<time>сила ${Math.round(Game.eff(i))}${Game.angry(i) ? ' · обижена' : ''}${Game.s.cs[i]?.allyUntil > Date.now() ? ' · уже в союзе' : ''}</time></div>${offerForm('alliance', i)}</div>`).join('');
+        }
+      }
+      if (tab === 'world') {
+        const ws = Game.s.wars.filter(w => w.a !== P && w.b !== P);
+        h = ws.map(w => `<div class="dep">${this.chip(w.a)} ${ic('swords')} ${this.chip(w.b)}<small>${w.sa}:${w.sb} · до ${U.stamp(w.until)}</small></div>`).join('') || '<div class="empty">Сейчас в мире нет долгих войн</div>';
+      }
+      U.$('#dip-body', root).innerHTML = h;
+      U.$('[data-tab="mail"] em', root).textContent = Diplo.unread() || '';
+      U.$('[data-tab="wars"] em', root).textContent = Diplo.warsOf(P).length || '';
+      U.$('#dip-d', root).textContent = Game.s.diamonds;
+      U.$('#dip-g', root).textContent = Game.s.gold;
+      this.renderStats();
+    };
+    U.modal(`<h2>${ic('mail')} Дипломатия <button class="x" data-close>${ic('x')}</button></h2>
+      <div class="stabs"><button data-tab="mail">${ic('mail')} Почта <em></em></button><button data-tab="wars">${ic('swords')} Мои войны <em></em></button><button data-tab="allies">${ic('ally')} Союзы</button><button data-tab="world">${ic('globe')} Войны мира</button></div>
+      <div class="balance"><span>${ic('gem', 'gem')} <b id="dip-d"></b></span><span>${ic('coin', 'coin')} <b id="dip-g"></b></span></div>
+      <div id="dip-body"></div>`, root => {
+      draw(root);
+      root.onclick = e => {
+        const tb = e.target.closest('[data-tab]');
+        if (tb) { tab = tb.dataset.tab; draw(root); return; }
+        const an = e.target.closest('[data-ans]');
+        if (an) {
+          const err = Diplo.answer(+an.dataset.ans, !!an.dataset.yes);
+          if (err) U.toast(err);
+          draw(root);
+          return;
+        }
+        const ac = e.target.closest('[data-act]');
+        if (ac) {
+          const row = ac.closest('.offer');
+          const d = +U.$('[data-d]', row).value || 0, g = +U.$('[data-g]', row).value || 0;
+          const r = ac.dataset.act === 'peace' ? Diplo.offerPeace(+ac.dataset.c, d, g) : Diplo.offerAlliance(+ac.dataset.c, d, g);
+          U.toast(r.err || r.text);
+          Game.changed();
+          draw(root);
+        }
       };
     }, 'wide');
   },

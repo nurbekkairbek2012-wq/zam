@@ -69,6 +69,7 @@ const Game = {
     this.occ = new Set();
     for (let k = 0; k < this.own.length; k++) if (this.isOccupied(k)) this.occ.add(k);
     Stats.init();
+    Diplo.init();
     if (!this.s.log.length) {
       this.t = Date.now();
       Buildings.placeInitial();
@@ -385,6 +386,8 @@ const Game = {
       return true;
     }
     if (this.allied(P, def)) return U.toast('Это твой союзник');
+    const tr = Diplo.truce(P, def);
+    if (tr) return U.toast(`Перемирие с ${this.name(def)} до ${U.stamp(tr.until)} — нападать нельзя`);
     const how = this.reach(k);
     if (!how) return U.toast('Слишком далеко. Нужен порт рядом или космодром');
     if (this.s.charges <= 0) return U.toast('Нет зарядов — купи в магазине');
@@ -413,8 +416,11 @@ const Game = {
     const gs = this.st(def);
     gs.grudge = (gs.grudge || 0) + n;
     gs.grudgeUntil = Date.now() + 2 * DAY;
+    Diplo.playerTook(def, n);
     this.log(`Ты захватил ${n} ${U.plural(n, 'клетку', 'клетки', 'клеток')} у ${this.c(def)}${how === 'port' ? ' (морской десант)' : how === 'cosmo' ? ' (удар с космодрома)' : ''}`, 'me', 'swords', Date.now());
     this.checkDeath(def, P);
+    // сильная обида может перерасти в долгую войну
+    if (this.cells(def) && gs.grudge >= 4 && !Diplo.atWar(def, P) && Math.random() < 0.6) Diplo.declare(def, P, 'обида за твои нападения');
     // союзник помогает
     const ally = this.s.cs[P]?.allyUntil > this.t ? this.s.cs[P].ally : null;
     if (ally && this.cells(ally) && this.lists[ally].some(c => this.nbrs(c).some(nb => this.own[nb] === def))) {
@@ -431,7 +437,7 @@ const Game = {
     const contact = new Map();
     for (const k of this.lists[me]) for (const nb of this.nbrs(k)) {
       const o = this.own[nb];
-      if (o !== OCEAN && o < FLOOD && o !== me && !this.allied(me, o)) contact.set(o, (contact.get(o) || 0) + 1);
+      if (o !== OCEAN && o < FLOOD && o !== me && !this.allied(me, o) && !Diplo.truce(me, o)) contact.set(o, (contact.get(o) || 0) + 1);
     }
     let att;
     if (contact.size) {

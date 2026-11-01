@@ -111,12 +111,13 @@ const Cal = {
 
     const goals = Planner.tasks.filter(t => t.type === 'long' && !t.goalDone && !t.goalMissed);
     U.$('#side-goals').innerHTML = goals.map(t => {
-      const total = t.dates.length, done = Object.keys(t.done).length;
+      const { done, total } = Planner.goalProgress(t);
+      const kids = Planner.children(t).length;
       const next = t.dates.filter(d => d >= today).sort()[0];
       return `<div class="goal" data-id="${t.id}" data-date="${next || t.dates[t.dates.length - 1]}">
         <div class="name">${ic('target')} ${U.esc(t.title)}</div>
         <div class="bar"><i style="width:${total ? done / total * 100 : 0}%"></i></div>
-        <div class="sub">${done} из ${total} дней · ${next ? 'следующий: ' + U.human(next) : 'даты закончились — отметь цель!'}</div>
+        <div class="sub">${done} из ${total} выполнено${kids ? ` · задач внутри: ${kids}` : ''} · ${next ? 'следующий день: ' + U.human(next) : 'даты закончились — отметь цель!'}</div>
       </div>`;
     }).join('') || '<div class="empty">Нет активных целей. Добавь долгосрочную задачу.</div>';
 
@@ -230,7 +231,8 @@ const Cal = {
     if (!t) return;
     const back = this.openDay;
     const st = Planner.status(t, date);
-    const r = st === 'done' ? (t.paid[date] ?? Planner.reward(t)) : Game.taskReward(Planner.reward(t));
+    const r = st === 'done' ? (t.paid[date] ?? Planner.reward(t)) : Game.taskReward(Planner.rewardFor(t, date));
+    const parent = t.parent ? Planner.get(t.parent) : null;
     const can = Planner.canMarkDone(t, date);
     let time = t.allDay ? 'весь день' : `${t.start}–${t.end} (${Planner.hours(t)} ч)`;
     if (t.type === 'deadline') time = `сделать до ${t.end} · работы ~${Planner.hours(t)} ч`;
@@ -238,9 +240,15 @@ const Cal = {
     if (t.type === 'normal') extra = `<div class="chip c-${t.importance}" style="display:inline-block;margin-top:6px">${IMPORTANCE[t.importance]}</div>`;
     if (t.type === 'deadline' && st === 'open') extra = `<div class="hint">${ic('clock')} ${this.untilText(Planner.endOf(t, date).getTime() - Date.now())}</div>`;
     if (t.type === 'long') {
-      const done = Object.keys(t.done).length;
-      extra = `<div class="hint">Дней выполнено: ${done} из ${t.dates.length}. ${t.goalDone ? 'Цель достигнута!' : t.goalMissed ? 'Цель провалена' : `За достижение цели: +${Planner.GOAL_BONUS} алм.`}</div>`;
+      const p = Planner.goalProgress(t);
+      const kids = Planner.children(t);
+      extra = `<div class="hint">Выполнено: ${p.done} из ${p.total} (дни цели и задачи внутри). ${t.goalDone ? 'Цель достигнута!' : t.goalMissed ? 'Цель провалена' : `За достижение цели: +${Planner.GOAL_BONUS} алм.`}</div>
+        <div class="subtasks"><div class="st-head">${ic('list')} Задачи внутри цели</div>
+        ${kids.map(c => `<div class="item c-${Planner.color(c)} ${Object.keys(c.done).length >= c.dates.length ? 'done' : ''}" data-kid="${c.id}" data-date="${c.dates[0]}">${ic(TYPES[c.type].icon)}<span class="name">${U.esc(c.title)}</span><span class="t">${U.human(c.dates[0])}, ${Planner.timeText(c)}</span></div>`).join('') || '<div class="empty">Пока пусто</div>'}
+        ${!t.goalDone && !t.goalMissed ? `<button class="btn" id="d-addkid" style="width:100%;margin-top:6px">${ic('plus')} Добавить задачу в цель</button>` : ''}
+        <div class="hint">Обычные задачи, дедлайны и встречи внутри цели дают алмазы как обычно, но если совпадают по времени с днём цели — эти часы оплачиваются один раз.</div></div>`;
     }
+    if (parent) extra += `<div class="hint">${ic('target')} Часть цели «${U.esc(parent.title)}»</div>`;
     const doneBtn = t.type === 'rest' ? '' : st === 'done'
       ? `<button class="btn grow" id="d-done">${ic('undo')} Не выполнено (−${r})</button>`
       : `<button class="btn primary grow" id="d-done" ${can.ok ? '' : 'disabled'}>${ic('check')} Выполнено (+${r} ${ic('gem', 'gem')})</button>`;
@@ -267,6 +275,9 @@ const Cal = {
       const g = U.$('#d-goal', root);
       if (g) g.onclick = () => U.confirm('Точно цель достигнута?', () => { Planner.completeGoal(t); after(); });
       U.$('#d-edit', root).onclick = () => this.editor(t);
+      U.$$('[data-kid]', root).forEach(el => el.onclick = () => this.details(el.dataset.kid, el.dataset.date));
+      const ak = U.$('#d-addkid', root);
+      if (ak) ak.onclick = () => this.editor(null, t.dates.find(d => d >= U.today()) || U.today(), t.id);
       U.$('#d-del', root).onclick = () => U.confirm(`Удалить «${t.title}»?`, () => { Planner.remove(t.id); after(); });
       const bk = U.$('#d-back', root);
       if (bk) bk.onclick = () => this.dayView(back);
@@ -275,12 +286,13 @@ const Cal = {
   },
 
   // ---------- добавление / изменение ----------
-  editor(task = null, date = null) {
+  editor(task = null, date = null, parentId = null) {
     const back = this.openDay;
     const f = task ? JSON.parse(JSON.stringify(task)) : {
       type: 'normal', title: '', importance: 'orange',
-      dates: [date || U.today()], start: '17:00', end: '18:00', allDay: false, notes: '', hours: 1,
+      dates: [date || U.today()], start: '17:00', end: '18:00', allDay: false, notes: '', hours: 1, parent: parentId || '',
     };
+    const goals = Planner.goals().filter(g => !task || g.id !== task.id);
     let mini = U.parse(f.dates[0] || U.today());
     mini = { y: mini.getFullYear(), m: mini.getMonth() };
     const lbl = 'style="display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px"';
@@ -296,6 +308,7 @@ const Cal = {
         <button data-imp="orange" class="c-orange">Важно</button>
         <button data-imp="red" class="c-red">Очень важно</button>
       </div></div>
+      <div class="field" id="f-parent"><label>Входит в долгосрочную цель</label><select class="input" id="e-parent"><option value="">— нет —</option>${goals.map(g => `<option value="${g.id}">${U.esc(g.title)}</option>`).join('')}</select></div>
       <div class="field" id="f-date"><label id="l-date">Дата</label><input type="date" class="input" id="e-date"></div>
       <div class="field" id="f-dates"><label>Даты цели (нажимай на дни) — выбрано: <b id="e-count">0</b></label>
         <div class="mini">
@@ -324,6 +337,7 @@ const Cal = {
     `);
     const $ = s => U.$(s, root);
     $('#e-title').value = f.title;
+    $('#e-parent').value = f.parent || '';
     $('#e-date').value = f.dates[0] || U.today();
     $('#e-start').value = f.start || '17:00';
     $('#e-end').value = f.end;
@@ -338,6 +352,7 @@ const Cal = {
       U.$$('.type-btn', root).forEach(b => b.classList.toggle('sel', b.dataset.type === f.type));
       U.$$('[data-imp]', root).forEach(b => b.classList.toggle('sel', b.dataset.imp === f.importance));
       $('#f-imp').classList.toggle('hidden', f.type !== 'normal');
+      $('#f-parent').classList.toggle('hidden', !goals.length || !['normal', 'deadline', 'meet'].includes(f.type));
       $('#f-date').classList.toggle('hidden', f.type === 'long');
       $('#f-dates').classList.toggle('hidden', f.type !== 'long');
       $('#f-allday').classList.toggle('hidden', f.type !== 'rest');
@@ -426,6 +441,9 @@ const Cal = {
       const data = { type: f.type, title: f.title, dates: f.dates, start: f.start, end: f.end, allDay: f.allDay, notes: f.notes };
       if (f.type === 'normal') data.importance = f.importance;
       if (f.type === 'deadline') data.hours = f.hours;
+      const par = $('#e-parent').value;
+      if (par && ['normal', 'deadline', 'meet'].includes(f.type)) data.parent = par;
+      else if (task) delete Planner.get(task.id).parent;
       if (task) Planner.update(task.id, data); else Planner.add(data);
       U.toast(task ? 'Сохранено' : 'Задача добавлена');
       App.refresh();

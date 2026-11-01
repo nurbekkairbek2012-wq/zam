@@ -516,3 +516,29 @@ body.locked .page, body.locked .tabs, body.locked .wallet { visibility: hidden; 
 .lb th:nth-child(5), .lb td:nth-child(5) { width: 52px; text-align: right; }
 .lb td:nth-child(4) { max-width: none; }
 @media (max-width: 760px) { .lb { width: auto; } }
+
+/* задачи внутри цели */
+.subtasks { margin-top: 10px; padding: 10px; border-radius: 10px; background: var(--blue-bg); }
+.st-head { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 13px; margin-bottom: 6px; color: #1d4ed8; }
+.subtasks .item { background: #fff; }
+
+/* дипломатия */
+.mail-pill { background: #dc2626; color: #fff; border-radius: 20px; padding: 0 7px; font-size: 12px; min-width: 20px; text-align: center; }
+.btn-tool.alert { box-shadow: 0 0 0 2px #dc2626, var(--shadow); }
+.stabs button em { font-style: normal; background: #dc2626; color: #fff; border-radius: 10px; font-size: 11px; padding: 0 6px; }
+.stabs button em:empty { display: none; }
+#dip-body { display: flex; flex-direction: column; gap: 10px; }
+.letter, .warcard { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: #fff; }
+.letter.new { border-color: #93c5fd; box-shadow: 0 0 0 2px #dbeafe; }
+.letter.accepted, .letter.declined, .letter.expired, .letter.read { opacity: .75; }
+.letter.k-war { border-color: #fca5a5; }
+.warcard.focus { box-shadow: 0 0 0 2px #2563eb; }
+.lh { display: flex; align-items: center; gap: 8px; font-weight: 600; flex-wrap: wrap; }
+.lh time { margin-left: auto; font-size: 12px; color: var(--muted); font-weight: 400; }
+.lk { font-size: 11px; background: var(--bg); padding: 2px 8px; border-radius: 10px; color: #52514e; }
+.lt { margin-top: 6px; font-size: 14px; }
+.lo { margin-top: 6px; font-weight: 700; color: #92400e; background: #fef3c7; display: inline-block; padding: 3px 8px; border-radius: 8px; font-size: 13px; }
+.offer { margin-top: 8px; }
+.offer .btn { flex: 0 0 auto; white-space: nowrap; }
+.dh { margin: 6px 0 0; font-size: 14px; }
+.tag.red { background: #fee2e2; color: #b91c1c; }

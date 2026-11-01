@@ -224,7 +224,7 @@ const Dash = {
         { label: 'Очень важно', value: occ.filter(o => o.t.importance === 'red').length, color: '#e23d3d' }] }))
       + this.card('Часы по дням недели', Ch.bars({ items: U.WD_SHORT.map((w, i) => ({ label: w, value: wdH[i] })) }))
       + this.card('Самые долгие выполненные задачи', Ch.hbars({ items: [...done].sort((a, b) => b.h - a.h).slice(0, 10).map(o => ({ label: o.t.title, value: o.h })), fmt: v => Ch.fmt(v) + ' ч' }))
-      + this.card('Прогресс целей', Ch.hbars({ items: goals.map(t => ({ label: t.title, value: Math.round(Object.keys(t.done).length / Math.max(1, t.dates.length) * 100), color: t.goalDone ? UP : t.goalMissed ? DOWN : PAL[0] })), fmt: v => v + '%', max: 100 }))
+      + this.card('Прогресс целей', Ch.hbars({ items: goals.map(t => ({ label: t.title, value: Math.round(Planner.goalProgress(t).done / Math.max(1, Planner.goalProgress(t).total) * 100), color: t.goalDone ? UP : t.goalMissed ? DOWN : PAL[0] })), fmt: v => v + '%', max: 100 }))
       + this.card('Самые частые задачи', Ch.hbars({ items: Object.entries(titles).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([l, v]) => ({ label: l, value: v })), fmt: v => v + ' раз' }))
       + `</div>`;
   },
@@ -407,6 +407,11 @@ const Dash = {
       Ch.kpi('Активных союзов', allies, { icon: 'ally' }),
       Ch.kpi('Пришельцы', aliens.length ? `${Game.cells(aliens[0])} кл.` : 'нет', { icon: 'ufo' }),
       Ch.kpi('Событий всего', Stats.st.ev.length, { icon: 'info' }),
+      Ch.kpi('Долгих войн сейчас', Game.s.wars.length, { icon: 'swords' }),
+      Ch.kpi('Долгих войн всего', this.tot('wars'), { icon: 'swords', sub: `из них против тебя: ${this.tot('wars_vs_me')}` }),
+      Ch.kpi('Миров заключено', this.tot('peace') + this.tot('peace_me'), { icon: 'peace', sub: `твоих: ${this.tot('peace_me')}` }),
+      Ch.kpi('Писем получено', this.tot('letters'), { icon: 'mail' }),
+      Ch.kpi('Потрачено на дипломатию', this.tot('spend_diplomacy'), { icon: 'gem', sub: `получено: ${this.tot('earn_diplomacy')}` }),
     ]) + `<div class="dgrid">`
       + this.card('Топ-15 стран по площади', Ch.hbars({ items: [...alive].sort((a, b) => Game.cells(b) - Game.cells(a)).slice(0, 15).map(i => ({ label: Game.name(i), value: Game.cells(i), pre: Game.flag(i), color: i === Game.player ? PAL[0] : '#898781' })) }))
       + this.card('Рост и падение за неделю', g7.length ? Ch.diverge({ items: [...g7.slice(0, 8), ...g7.slice(-8)].filter((x, j, a) => a.indexOf(x) === j && x.v).map(x => ({ label: Game.name(x.i), value: x.v, pre: Game.flag(x.i) })) }) : Ch.empty())

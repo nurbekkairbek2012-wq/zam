@@ -57,6 +57,7 @@ const World = {
     for (const [type, ev] of Object.entries(EVENTS)) {
       if (Math.random() < ev.chance * f) this.start(type);
     }
+    out.push(...Diplo.tick());
     out.forEach(r => { r.t = t; Stats.bump('battles'); if (r.d === G.player) Stats.bump('battles_vs_me'); });
     return out;
   },
@@ -82,7 +83,7 @@ const World = {
     }
     const isAlien = G.countries[a].kind === 'alien';
     const angry = G.angry(a);
-    const okTarget = o => o !== OCEAN && o < FLOOD && o !== a && !G.allied(a, o);
+    const okTarget = o => o !== OCEAN && o < FLOOD && o !== a && !G.allied(a, o) && !Diplo.truce(a, o);
     const fronts = [];
     const L = G.lists[a];
     if (!L.length) return null;
@@ -137,7 +138,7 @@ const World = {
     for (let i = 0; i < 25; i++) {
       const k = list[(Math.random() * list.length) | 0];
       const holder = G.own[k], home = G.orig[k];
-      if (holder === G.player || home === G.player || !G.cells(home) || G.allied(home, holder)) continue;
+      if (holder === G.player || home === G.player || !G.cells(home) || G.allied(home, holder) || Diplo.truce(home, holder)) continue;
       if (!G.nbrs(k).some(n => G.own[n] === home)) continue;
       if (G.tryTake(home, k) === 'ok') {
         G.checkDeath(holder, home);
@@ -154,7 +155,7 @@ const World = {
       const k = (Math.random() * G.own.length) | 0;
       const o = G.own[k];
       if (!G.isLand(k) || o === G.player) continue;
-      const nb = G.nbrs(k).find(n => G.isLand(n) && G.own[n] !== o && G.own[n] !== G.player && !G.allied(o, G.own[n]));
+      const nb = G.nbrs(k).find(n => G.isLand(n) && G.own[n] !== o && G.own[n] !== G.player && !G.allied(o, G.own[n]) && !Diplo.truce(o, G.own[n]));
       if (nb == null) continue;
       const other = G.own[nb];
       const [a, d, cell] = G.eff(o) >= G.eff(other) ? [o, other, nb] : [other, o, k];
