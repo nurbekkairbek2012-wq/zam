@@ -13,6 +13,7 @@ const ALIEN_COOLDOWN = 30 * DAY; // не чаще раза в месяц
 const SICK_DAYS = 7;
 
 const World = {
+  HUNT_RATE: 0.5, // как часто соседи «добивают» слабеющую страну (за полчаса)
   CALM_SKIP: 0.5, // как часто сосед передумывает нападать на тебя без повода
   BATTLES_PER_TICK: 1.7, // ≈ 80 попыток (около 50 удачных стычек) в сутки на весь мир
 
@@ -58,6 +59,7 @@ const World = {
       if (Math.random() < ev.chance * f) this.start(type);
     }
     out.push(...Diplo.tick());
+    out.push(...this.hunt(f));
     out.forEach(r => { r.t = t; Stats.bump('battles'); if (r.d === G.player) Stats.bump('battles_vs_me'); });
     return out;
   },
@@ -130,6 +132,28 @@ const World = {
     }
     return null;
   },
+  // стервятники: когда страна слабеет, все соседи стараются урвать кусок и добить её
+  hunt(f) {
+    const G = Game, res = [];
+    for (let i = 1; i < G.countries.length; i++) {
+      const c = G.countries[i];
+      if (!c || i === G.player || c.kind === 'alien' || !G.cells(i)) continue;
+      if (G.cells(i) >= c.init * 0.35) continue; // слабеет — потеряла больше 65% своей земли
+      if (Math.random() >= this.HUNT_RATE * f) continue;
+      const hunters = this.neighbours(i).filter(j => G.ai(j) && !G.allied(i, j) && !Diplo.truce(i, j));
+      if (!hunters.length) continue;
+      hunters.sort((x, y) => G.eff(y) - G.eff(x));
+      const a = Math.random() < 0.5 ? hunters[0] : G.rand(hunters);
+      const front = G.lists[i].find(k => G.nbrs(k).some(nb => G.own[nb] === a));
+      if (front == null) continue;
+      const A = G.eff(a) * 1.4, D = G.defense(i) * 0.6;
+      if (Math.random() >= A * A / (A * A + D * D)) continue;
+      const n = G.grab(a, i, front, 1);
+      if (n) res.push({ a, d: i, n, how: 'добивает слабеющую страну' });
+    }
+    return res;
+  },
+
   // возврат: исконный хозяин отбивает свою клетку обратно (у игрока не отбирают)
   reclaim() {
     const G = Game;

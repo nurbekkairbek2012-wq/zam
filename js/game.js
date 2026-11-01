@@ -299,14 +299,15 @@ const Game = {
     // все, кого поглотила погибшая страна, освобождаются
     this.countries.forEach((cc, z) => {
       const zs = this.s.cs[z];
-      if (cc && zs && zs.dead && zs.killer === d && z !== d) this.liberate(z, `${this.c(d)} пала — народ ${this.c(z)} вышел на свободу`);
+      if (cc && zs && zs.dead && zs.killer === d && z !== d) this.liberate(z, `${this.c(d)} пала — народ ${this.c(z)} вышел на свободу`, 0.1);
     });
   },
-  liberate(z, why) {
+  // frac — какую долю исходной земли страна возвращает при возрождении
+  liberate(z, why, frac = 0.25) {
     const c = this.countries[z];
     if (!c || c.kind !== 'nation' || c.capital == null) return 0;
     if (c.noRespawn && !this.cells(z)) return 0; // погибшие жузы не возрождаются
-    const want = Math.max(3, Math.round(c.init * 0.35));
+    const want = Math.max(2, Math.round(c.init * frac));
     const q = [c.capital], seen = new Set([c.capital]);
     const fromPlayer = { n: 0 };
     let taken = 0;
