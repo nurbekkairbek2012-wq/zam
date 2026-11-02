@@ -554,3 +554,21 @@ body.locked .page, body.locked .tabs, body.locked .wallet { visibility: hidden; 
   .day { min-height: 76px; }
   .chip { -webkit-line-clamp: 3; line-height: 1.2; }
 }
+
+/* армия и тиын */
+.ic.tiyn { color: #94a3b8; }
+.wallet-btn { display: inline-flex; align-items: center; gap: 4px; color: #fff; padding: 2px 6px; border-radius: 8px; font-size: inherit; }
+.wallet-btn:hover { background: rgba(255,255,255,.12); }
+.army-pill { background: #9f1239; color: #fff; border-radius: 20px; padding: 0 7px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.rate { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.milsum { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
+.milsum > div { background: var(--bg); border-radius: 10px; padding: 8px 10px; }
+.milsum small { display: block; font-size: 11px; color: var(--muted); }
+.milsum b { font-size: 18px; }
+.milsum b.big { font-size: 22px; color: #9f1239; }
+.milsum b.up, .milcard b.up { color: #0a7d0a; }
+.milcard b.down { color: #d03b3b; }
+.milcard { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+.feed { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.feed .btn { padding: 6px 10px; font-size: 13px; }
+@media (max-width: 760px) { .milsum { grid-template-columns: repeat(2, 1fr); } }

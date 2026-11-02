@@ -6,6 +6,7 @@ const BUILDINGS = {
   bank:     { name: 'Банк', color: '#15803d', cost: { d: 80 }, div: 300, desc: 'Открывает вклады: алмазы под процент на 1/3/7 дней, золото — снимаешь когда хочешь' },
   fort:     { name: 'Крепость', color: '#92400e', cost: { d: 80 }, div: 100, desc: 'Клетки в радиусе 2 нельзя захватить, пока стоит крепость. Саму крепость взять вдвое сложнее' },
   shield:   { name: 'Щит', color: '#2563eb', cost: { d: 30 }, div: 60, desc: '10 HP, радиус 4: каждая отбитая атака на клетку внутри = −1 HP. От штрафа за пропуск не спасает', hp: 10, r: 4 },
+  aux:      { name: 'Вспомогательная база', color: '#9f1239', cost: { d: 30 }, div: 100, desc: 'До +20% к силе основной военной базы (+2% за уровень). Кормится отдельно — голодная не помогает' },
   barracks: { name: 'Казарма', color: '#4d7c0f', cost: { d: 70 }, div: 150, desc: '+1 бесплатный заряд захвата каждые 24 ч' },
   port:     { name: 'Порт', color: '#0369a1', cost: { d: 70 }, div: 150, coastal: true, desc: 'Захват через море — до 10 клеток от порта. Ставится только у моря' },
   cosmo:    { name: 'Космодром', color: '#dc2626', cost: { d: 150, g: 5 }, div: 400, desc: 'Раз в сутки — захват в любой точке мира' },
@@ -20,7 +21,8 @@ const TAGS = {
 };
 
 const Buildings = {
-  limit(type, o) { return 1 + Math.floor(Game.cells(o) / BUILDINGS[type].div); },
+  // лимит растёт по корню от размера страны, чтобы у гигантов не было сотни построек
+  limit(type, o) { return 1 + Math.floor(Math.sqrt(Game.cells(o) / BUILDINGS[type].div)); },
   owned(o) { return Game.s.buildings.filter(b => Game.own[b.cell] === o); },
   count(type, o) { return Game.s.buildings.reduce((n, b) => n + (b.type === type && Game.own[b.cell] === o ? 1 : 0), 0); },
   // сводка по всем странам: owner -> {тип: количество}
@@ -33,7 +35,21 @@ const Buildings = {
     }
     return m;
   },
-  at(k) { return Game.s.buildings.find(b => b.cell === k); },
+  // быстрый индекс построек (пересобирается, когда меняется список)
+  index() {
+    const list = Game.s.buildings;
+    if (this._idx && this._idxList === list && this._idxLen === list.length) return this._idx;
+    const idx = { byCell: new Map(), forts: [], shields: [] };
+    for (const b of list) {
+      idx.byCell.set(b.cell, b);
+      if (b.type === 'fort') idx.forts.push(b);
+      else if (b.type === 'shield') idx.shields.push(b);
+    }
+    this._idx = idx; this._idxList = list; this._idxLen = list.length;
+    return idx;
+  },
+  at(k) { return this.index().byCell.get(k); },
+  isFort(k) { const b = this.at(k); return !!b && b.type === 'fort'; },
 
   canBuild(type, o, k) {
     const def = BUILDINGS[type];
@@ -50,6 +66,7 @@ const Buildings = {
     const def = BUILDINGS[type];
     const b = { id: Game.s.nextId++, type, cell: k, builtAt: Game.t, paid: 0 };
     if (def.hp) { b.hp = def.hp; b.r = def.r; }
+    if (type === 'aux') { b.lvl = 1; b.fedUntil = Game.t + DAY; Military.dirty(); }
     Game.s.buildings.push(b);
     return b;
   },
@@ -139,6 +156,7 @@ const Buildings = {
       oil: TAGS.oil.has(iso) ? 2.5 : 0,
       obs: TAGS.obs.has(iso) ? 1.5 : 0.1,
       bank: TAGS.bank.has(iso) ? 1.5 : 0.2,
+      aux: c.base >= 30 ? 1.2 : 0.5,
       cosmo: TAGS.cosmo.has(iso) ? 1 : 0,
     };
   },
@@ -174,20 +192,20 @@ const Buildings = {
   },
 
   // ИИ копит алмазы и иногда строит
-  aiEconomy(counts) {
-    const perTick = Game.TICK_MS / DAY;
+  aiEconomy(counts, mult = 1) {
+    const perTick = Game.TICK_MS / DAY * mult;
     Game.countries.forEach((c, o) => {
       if (!Game.ai(o)) return;
       const s = Game.st(o), b = counts.get(o) || {};
       s.dia += (1 + c.base / 10) * (1 + 0.2 * (b.oil || 0)) * perTick;
       if (b.bank) s.dia += s.dia * 0.02 * Math.min(3, b.bank) * perTick;
       s.dia = Math.min(600, s.dia);
-      if (Math.random() < 0.03 * Game.tickFrac()) {
+      if (Math.random() < 0.03 * Game.tickFrac() * mult) {
         const type = this.pick(this.weights(o));
         const k = this.freeCell(o, type);
         if (k != null && !this.canBuild(type, o, k)) this.build(type, o, k);
       }
-      if (s.dia > 40 && Math.random() < 0.02 * Game.tickFrac()) {
+      if (s.dia > 40 && Math.random() < 0.02 * Game.tickFrac() * mult) {
         const L = Game.lists[o];
         for (let i = 0; i < 6; i++) {
           const k = Game.rand(L);

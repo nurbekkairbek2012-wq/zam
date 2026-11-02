@@ -40,6 +40,7 @@ const App = {
 
     U.$$('.tab').forEach(b => b.onclick = () => this.show(b.dataset.tab));
     U.$('#btn-settings').onclick = () => this.settings();
+    U.$('#w-tiyn-btn').onclick = () => Military.openExchange();
 
     Game.update();
     Planner.checkMissed();
@@ -72,6 +73,7 @@ const App = {
   wallet() {
     U.$('#w-diamonds').textContent = Game.s.diamonds;
     U.$('#w-gold').textContent = Game.s.gold;
+    U.$('#w-tiyn').textContent = Game.s.tiyn;
   },
 
   refresh() {

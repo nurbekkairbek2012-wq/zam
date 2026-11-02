@@ -19,17 +19,24 @@ const World = {
 
   tick() {
     const G = Game, t = G.t;
-    const counts = Buildings.counts();
-    Buildings.produce();
-    Buildings.aiEconomy(counts);
-    Stats.snapshot();
-    this.epidemicStep();
+    // экономика и медленные процессы — раз в 5 минут, чтобы догонялка была быстрой
+    const SLOW = 5;
+    this.step = (this.step || 0) + 1;
+    if (!this._counts || this.step % SLOW === 0) {
+      this._counts = Buildings.counts();
+      Buildings.produce();
+      Buildings.aiEconomy(this._counts, SLOW);
+      Military.tick(SLOW);
+      Stats.snapshot();
+      this.epidemicStep();
+      this.alliancesStep();
+      this.respawns();
+    }
+    const counts = this._counts;
     this.runPending();
     this.restoreScars();
     this.hurricaneStep();
     this.goldStep();
-    this.alliancesStep();
-    this.respawns();
 
     const out = [];
     const f = G.tickFrac();
@@ -69,6 +76,9 @@ const World = {
     const G = Game;
     let a = forced;
     if (a == null) {
+      // веса нападающих считаем один раз за шаг мира
+      if (this._poolT !== G.t) { this._poolT = G.t; this._pool = null; }
+      if (!this._pool) {
       const pool = [];
       let total = 0;
       G.countries.forEach((c, i) => {
@@ -78,6 +88,9 @@ const World = {
         const w = G.eff(i) ** 1.5 * (1 + 0.3 * (b.mine || 0) + 0.2 * (b.oil || 0)) * (c.kind === 'alien' ? 4 : 1) * (G.angry(i) ? 25 : 1) / (over * over);
         pool.push([i, w]); total += w;
       });
+      this._pool = { pool, total };
+      }
+      const { pool, total } = this._pool;
       if (!pool.length) return null;
       let r = Math.random() * total;
       a = pool[pool.length - 1][0];
@@ -112,7 +125,7 @@ const World = {
 
     this.contagion(a, d);
     const revenge = d === G.player && angry;
-    const A = G.eff(a) * (G.s.buildings.some(b => b.type === 'fort' && b.cell === cell) ? 0.6 : 1) * (G.orig[cell] === a ? 1.8 : 1) * (revenge ? 1.6 : 1);
+    const A = G.eff(a) * (Buildings.isFort(cell) ? 0.6 : 1) * (G.orig[cell] === a ? 1.8 : 1) * (revenge ? 1.6 : 1);
     const D = G.defense(d);
     if (Math.random() < A * A / (A * A + D * D)) {
       const lvl = G.level(a);

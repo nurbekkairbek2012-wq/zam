@@ -70,6 +70,7 @@ const Game = {
     for (let k = 0; k < this.own.length; k++) if (this.isOccupied(k)) this.occ.add(k);
     Stats.init();
     Diplo.init();
+    Military.init();
     if (!this.s.log.length) {
       this.t = Date.now();
       Buildings.placeInitial();
@@ -208,7 +209,8 @@ const Game = {
   eff(i) {
     const c = this.countries[i];
     const ratio = Math.min(1, Math.sqrt(this.cells(i) / Math.max(1, c.init)));
-    let p = c.base * (0.55 + 0.45 * ratio) * (1 + 0.1 * (this.level(i) - 1));
+    // сила = уровень военной базы (+ вспомогательные базы, голод) × размер страны
+    let p = Military.power(i) * (0.55 + 0.45 * ratio);
     if (this.sick(i)) p *= 0.6;
     return p;
   },
@@ -229,11 +231,11 @@ const Game = {
   // ---------- защита клеток ----------
   fortGuard(k) {
     const o = this.own[k];
-    return this.s.buildings.some(b => b.type === 'fort' && b.cell !== k && this.own[b.cell] === o && this.dist2(b.cell, k) <= 4.5);
+    return Buildings.index().forts.some(b => b.cell !== k && this.own[b.cell] === o && this.dist2(b.cell, k) <= 4.5);
   },
   shieldFor(k) {
     const o = this.own[k];
-    return this.s.buildings.find(b => b.type === 'shield' && b.hp > 0 && this.own[b.cell] === o && this.dist2(b.cell, k) <= b.r * b.r);
+    return Buildings.index().shields.find(b => b.hp > 0 && this.own[b.cell] === o && this.dist2(b.cell, k) <= b.r * b.r);
   },
   breakShieldIfDead(sh) {
     if (sh.hp > 0) return;
@@ -399,7 +401,7 @@ const Game = {
     // страна сопротивляется по силе
     const me = this.eff(P), dd = this.defense(def);
     let chance = 0.35 + 0.65 * me / (me + dd);
-    if (this.s.buildings.some(b => b.type === 'fort' && b.cell === k)) chance *= 0.5;
+    if (Buildings.isFort(k)) chance *= 0.5;
     if (Math.random() > chance) {
       Stats.bump('atk_fail');
       this.fx('repel', k);

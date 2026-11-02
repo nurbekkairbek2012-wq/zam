@@ -25,6 +25,7 @@ const MapView = {
     this.bindInput();
     U.$('#btn-shop').onclick = () => this.shop();
     U.$('#btn-diplo').onclick = () => this.diplomacy();
+    U.$('#btn-army').onclick = () => Military.open();
     U.$('#btn-capture').onclick = () => this.setMode(this.mode === 'capture' ? null : 'capture');
     U.$('#btn-home').onclick = () => this.focusPlayer();
     U.$('#btn-zin').onclick = () => this.zoomAt(this.cw / 2, this.ch / 2, this.cam.s * 1.4);
@@ -424,6 +425,7 @@ const MapView = {
       const me = o === Game.player;
       h = `<h4>${this.chip(o)}${me ? ' (ты)' : ''}</h4>
         <div>Клеток: <b>${n}</b> (было ${c.init}) · Сила: <b>${Math.round(Game.eff(o))}</b></div>`;
+      h += `<div class="muted">${ic('power')} Военная база ур. ${Military.level(o)}${Military.auxBonus(o) ? `, вспомогательные +${Math.round(Military.auxBonus(o) * 100)}%` : ''}${Military.hungry(o) ? ' · <b style="color:#b91c1c">армия голодает</b>' : ''}</div>`;
       if (Game.sick(o)) h += `<div class="tag purple">${ic('virus')} Эпидемия: сила −40%</div>`;
       if (st.ally != null && st.allyUntil > Date.now()) h += `<div class="tag blue">${ic('ally')} Союз с ${this.chip(st.ally)}</div>`;
       if (c.kind === 'alien') h += `<div class="tag green">${ic('ufo')} Сильны в атаке, слабы в обороне</div>`;
@@ -485,6 +487,8 @@ const MapView = {
 
   renderStats() {
     const P = Game.player, n = Game.cells(P);
+    U.$('#army-lvl').textContent = Math.round(Game.eff(P));
+    U.$('#btn-army').classList.toggle('alert', Military.hungry(P));
     const unread = Diplo.unread(), mc = U.$('#mail-count');
     mc.textContent = unread; mc.classList.toggle('hidden', !unread);
     U.$('#btn-diplo').classList.toggle('alert', Diplo.warsOf(P).length > 0);
@@ -701,7 +705,7 @@ const MapView = {
           <div class="shop-item"><div class="sic" style="background:#7c2d12">${ic('up')}</div><div class="info"><b>Улучшить силу → ур. ${s.level + 1}</b>
             <small>Сейчас за заряд берёшь ${s.level} кл., после — ${s.level + 1}. Сила в бою растёт на 10%</small></div>
             <div class="buy"><button class="btn blue" data-buy="upgrade">${up.d} ${ic('gem', 'gem')} + ${up.g} ${ic('coin', 'coin')}</button></div></div>`;
-        h += ['shield', 'fort', 'barracks', 'port', 'cosmo'].map(item).join('');
+        h += ['aux', 'shield', 'fort', 'barracks', 'port', 'cosmo'].map(item).join('');
       }
       if (tab === 'eco') h += ['mine', 'gen', 'oil', 'bank', 'obs'].map(item).join('');
       if (tab === 'bank') h += this.bankHtml();
