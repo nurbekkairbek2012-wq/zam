@@ -449,7 +449,7 @@ const MapView = {
       if (bl.length) {
         const cnt = {};
         bl.forEach(b => cnt[b.type] = (cnt[b.type] || 0) + 1);
-        h += `<div class="bl">${Object.entries(cnt).map(([t, n]) => `<button data-btype="${t}" data-bo="${o}" title="${BUILDINGS[t].name} — нажми, чтобы узнать" style="background:${BUILDINGS[t].color}">${ic(t)}${n}</button>`).join('')}</div>`;
+        h += `<div class="bl">${Object.entries(cnt).map(([t, n]) => `<button data-btype="${t}" data-bo="${o}" data-tip-up="1" data-tip="${U.esc(this.buildingTip(t, n, o))}" style="background:${BUILDINGS[t].color}">${ic(t)}${n}</button>`).join('')}</div>`;
       }
       const arm = Game.armorOf(k);
       if (me) h += `<div class="armor">${ic('shield')} Укрепление клетки: <b>${arm}</b> ${U.plural(arm, 'удар', 'удара', 'ударов')}<small>Включи «Захват» и нажми на эту клетку — каждый заряд добавляет +1 удар, который она выдержит</small></div>`;
@@ -477,6 +477,19 @@ const MapView = {
     U.$$('[data-dip]', box).forEach(b => b.onclick = () => this.diplomacy(b.dataset.dip, +b.dataset.c));
     U.$$('[data-btype]', box).forEach(b => b.onclick = () => this.openType(+b.dataset.bo, b.dataset.btype));
     U.$$('[data-open-b]', box).forEach(b => b.onclick = () => this.openBuilding(+b.dataset.openB));
+  },
+
+  // короткая подсказка для значка постройки
+  buildingTip(type, n, o) {
+    const def = BUILDINGS[type];
+    const short = def.desc.split('. ')[0];
+    let extra = '';
+    if (type === 'hq') extra = ` · ур. ${Military.level(o)}`;
+    if (o === Game.player) {
+      const ready = Buildings.owned(o).filter(b => b.type === type && Buildings.hasReward(b)).length;
+      if (ready) extra += ' · есть награда';
+    }
+    return `${def.name} × ${n}${extra} — ${short}. Нажми, чтобы открыть`;
   },
 
   // ---------- окна зданий ----------

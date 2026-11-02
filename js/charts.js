@@ -254,11 +254,22 @@ const Tip = {
     document.body.appendChild(this.el);
     document.addEventListener('mouseover', e => {
       const t = e.target.closest && e.target.closest('[data-tip]');
-      if (t) this.show(t.dataset.tip, e); else if (!e.target.closest('canvas')) this.hide();
+      if (t && t.dataset.tipUp) this.showAbove(t.dataset.tip, t);
+      else if (t) this.show(t.dataset.tip, e); else if (!e.target.closest('canvas')) this.hide();
     });
-    document.addEventListener('mousemove', e => { if (this.el.style.opacity === '1') this.move(e); });
+    document.addEventListener('mousemove', e => { if (this.el.style.opacity === '1' && !this.pinned) this.move(e); });
+  },
+  // подсказка над элементом (не следует за мышью)
+  showAbove(text, el) {
+    this.pinned = true;
+    this.el.textContent = text;
+    this.el.style.opacity = '1';
+    const r = el.getBoundingClientRect(), w = this.el.offsetWidth, h = this.el.offsetHeight;
+    this.el.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+    this.el.style.top = Math.max(8, r.top - h - 8) + 'px';
   },
   show(text, e) {
+    this.pinned = false;
     if (!text) return this.hide();
     this.el.textContent = text;
     this.el.style.opacity = '1';
@@ -269,5 +280,5 @@ const Tip = {
     this.el.style.left = Math.min(window.innerWidth - w - 8, e.clientX + 12) + 'px';
     this.el.style.top = (e.clientY + 14) + 'px';
   },
-  hide() { if (this.el) this.el.style.opacity = '0'; },
+  hide() { if (this.el) { this.el.style.opacity = '0'; this.pinned = false; } },
 };

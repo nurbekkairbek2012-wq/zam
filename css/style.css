@@ -589,3 +589,5 @@ body.locked .page, body.locked .tabs, body.locked .wallet { visibility: hidden; 
   .tab { padding: 6px 10px; }
   .wallet { gap: 8px; }
 }
+/* подсказка над значком */
+.tip { max-width: 260px; line-height: 1.35; }
