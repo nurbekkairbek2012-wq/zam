@@ -1,5 +1,6 @@
 // Постройки: одинаково работают у всех стран (и у ИИ, и у Казахстана)
 const BUILDINGS = {
+  hq:       { name: 'Основная военная база', color: '#7f1d1d', cost: { d: 0 }, div: 1e9, special: true, desc: 'Её уровень — сила страны. Сюда копится налог с территории. Если базу захватят, она переедет на другую клетку, уровень упадёт на 1, а несобранный налог пропадёт' },
   mine:     { name: 'Алмазная шахта', color: '#0d9488', cost: { d: 100 }, div: 150, desc: '+5 алмазов каждые 24 ч' },
   gen:      { name: 'Генератор золота', color: '#d97706', cost: { d: 50 }, div: 60, desc: '+1 золото каждые 24 ч' },
   oil:      { name: 'Нефтяная вышка', color: '#1f2937', cost: { d: 90 }, div: 150, desc: '+20% алмазов за выполненные задачи (у ИИ — +20% дохода)' },
@@ -39,9 +40,10 @@ const Buildings = {
   index() {
     const list = Game.s.buildings;
     if (this._idx && this._idxList === list && this._idxLen === list.length) return this._idx;
-    const idx = { byCell: new Map(), forts: [], shields: [] };
+    const idx = { byCell: new Map(), forts: [], shields: [], hq: new Map() };
     for (const b of list) {
       idx.byCell.set(b.cell, b);
+      if (b.type === 'hq') idx.hq.set(Game.own[b.cell], b);
       if (b.type === 'fort') idx.forts.push(b);
       else if (b.type === 'shield') idx.shields.push(b);
     }
@@ -49,10 +51,12 @@ const Buildings = {
     return idx;
   },
   at(k) { return this.index().byCell.get(k); },
+  invalidate() { this._idx = null; },
   isFort(k) { const b = this.at(k); return !!b && b.type === 'fort'; },
 
   canBuild(type, o, k) {
     const def = BUILDINGS[type];
+    if (def.special) return 'Это здание нельзя построить';
     if (Game.own[k] !== o) return 'Строить можно только на своей территории';
     if (this.at(k)) return 'Тут уже есть постройка';
     if (def.coastal && !Game.coastal(k)) return 'Порт можно ставить только у моря';
@@ -92,10 +96,51 @@ const Buildings = {
   },
   s() { return Game.s.buildings; },
   remove(list, why) {
+    list = list.filter(b => b.type !== 'hq');
+    if (!list.length) return;
     const del = new Set(list);
     const mine = list.filter(b => Game.own[b.cell] === Game.player || b.prevOwner === Game.player);
     Game.s.buildings = Game.s.buildings.filter(b => !del.has(b));
     if (mine.length) Game.log(`Потеряны постройки (${why}): ${mine.map(b => BUILDINGS[b.type].name.toLowerCase()).join(', ')}`, 'loss', 'alert');
+  },
+
+  // ---------- награды внутри зданий ----------
+  storeText(s) {
+    if (!s) return '';
+    return [s.d && `${s.d} алм.`, s.g && `${s.g} зол.`, s.c && `${s.c} зар.`].filter(Boolean).join(', ');
+  },
+  hasReward(b) {
+    if (b.type === 'hq') return Game.own[b.cell] === Game.player && Game.s.taxStore >= 1;
+    return !!(b.store && (b.store.d || b.store.g || b.store.c));
+  },
+  collect(b) {
+    if (Game.own[b.cell] !== Game.player) return 'Это не твоё здание';
+    if (b.type === 'hq') return Military.collectTax();
+    const s = b.store;
+    if (!s || !(s.d || s.g || s.c)) return 'Пока нечего забирать';
+    if (s.d) Game.earn(s.d, 'mine');
+    if (s.g) { Game.s.gold += s.g; Stats.bump('gold_mined', s.g); }
+    if (s.c) { Game.s.charges += s.c; Stats.bump('free_charges', s.c); }
+    Game.log(`${BUILDINGS[b.type].name}: награда забрана (+${this.storeText(s)})`, 'reward', b.type, Date.now());
+    b.store = null;
+    return null;
+  },
+  // ---------- перемещение: одно здание в день ----------
+  canMoveToday() { return Game.s.moveDay !== U.today(); },
+  move(b, k) {
+    const P = Game.player;
+    if (!b || Game.own[b.cell] !== P) return 'Это не твоё здание';
+    if (!this.canMoveToday()) return 'Сегодня ты уже перемещал здание — следующее завтра';
+    if (Game.own[k] !== P) return 'Переносить можно только на свою клетку';
+    if (this.at(k)) return 'Эта клетка занята другим зданием';
+    if (BUILDINGS[b.type].coastal && !Game.coastal(k)) return 'Порт можно ставить только у моря';
+    b.cell = k;
+    Game.s.moveDay = U.today();
+    this.invalidate();
+    Military.dirty();
+    Game.log(`${BUILDINGS[b.type].name} перемещена на новое место`, 'shop', b.type, Date.now());
+    Game.changed();
+    return null;
   },
 
   cosmoReady(o) { return Game.s.buildings.some(b => b.type === 'cosmo' && Game.own[b.cell] === o && Game.t - (b.cosmoAt || 0) >= DAY); },
@@ -116,9 +161,10 @@ const Buildings = {
       const o = Game.own[b.cell];
       if (!Game.isLand(b.cell)) continue;
       if (o === Game.player) {
-        if (b.type === 'gen') me.g += n;
-        if (b.type === 'mine') me.d += 5 * n;
-        if (b.type === 'barracks') me.c += n;
+        b.store = b.store || { d: 0, g: 0, c: 0 };
+        if (b.type === 'gen') { b.store.g += n; me.g += n; }
+        if (b.type === 'mine') { b.store.d += 5 * n; me.d += 5 * n; }
+        if (b.type === 'barracks') { b.store.c += n; me.c += n; }
       } else {
         const s = Game.st(o);
         if (b.type === 'gen') s.gold += n;
@@ -126,13 +172,9 @@ const Buildings = {
         if (b.type === 'barracks') s.free = (s.free || 0) + n;
       }
     }
-    if (me.d || me.g || me.c) {
-      if (me.d) Game.earn(me.d, 'mine');
-      Game.s.gold += me.g; Game.s.charges += me.c;
-      Stats.bump('gold_mined', me.g);
-      Stats.bump('free_charges', me.c);
-      const parts = [me.d && `+${me.d} алм. (шахты)`, me.g && `+${me.g} зол. (генераторы)`, me.c && `+${me.c} зар. (казармы)`].filter(Boolean);
-      Game.log(`Постройки принесли: ${parts.join(', ')}`, 'reward', 'gift');
+    if ((me.d || me.g || me.c) && !(Game.s.storeLogAt > Game.t - 12 * HOUR)) {
+      Game.s.storeLogAt = Game.t;
+      Game.log('В твоих зданиях накопилась награда — зайди в здание на карте и нажми «Забрать». Если здание захватят, награда пропадёт', 'reward', 'gift');
     }
   },
 
@@ -171,7 +213,7 @@ const Buildings = {
     Game.countries.forEach((c, o) => {
       if (!c || c.kind !== 'nation' || !Game.cells(o)) return;
       if (o === Game.player) {
-        const k = Game.lists[o].includes(c.capital) ? c.capital : Game.lists[o][0];
+        const k = Game.lists[o].includes(c.capital) && !this.at(c.capital) ? c.capital : this.freeCell(o, 'mine');
         this.place('mine', k);
         return;
       }

@@ -118,6 +118,8 @@ const Game = {
     this.own[k] = o;
     if (this.s.armor && this.s.armor[k]) delete this.s.armor[k];
     if (this.occ) { if (this.isOccupied(k)) this.occ.add(k); else this.occ.delete(k); }
+    const bld = Buildings.index().byCell.get(k);
+    if (bld && this.lists) this.afterBuildingCaptured(bld, old, o);
     if (old === this.player && o !== this.player) this.fx('lost', k);
     else if (o === this.player && old !== this.player && old !== OCEAN && old < FLOOD) this.fx('gain', k);
     else if (old !== OCEAN && old < FLOOD && o !== OCEAN && o < FLOOD) this.fx('battle', k);
@@ -242,6 +244,14 @@ const Game = {
     this.s.buildings = this.s.buildings.filter(b => b !== sh);
     if (this.own[sh.cell] === this.player) this.log('Щит разрушен — у него кончились HP', 'loss', 'shield');
   },
+  afterBuildingCaptured(b, old, o) {
+    if (b.store && (b.store.d || b.store.g || b.store.c)) {
+      if (old === this.player) this.log(`${BUILDINGS[b.type].name} захвачена — накопленная награда пропала (${Buildings.storeText(b.store)})`, 'loss', 'alert');
+      b.store = null;
+    }
+    if (b.type === 'hq') Military.hqLost(b, old, o);
+  },
+
   // бронь клетки: сколько ударов она ещё выдержит
   armorOf(k) { return (this.s.armor && this.s.armor[k]) || 0; },
   fortify(k, n = 1) {

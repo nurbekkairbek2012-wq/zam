@@ -45,6 +45,7 @@ const ICON_PATHS = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5 12 13l8.5-6.5"/>',
   peace: '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M12 12l-6.4 6.4M12 12l6.4 6.4"/>',
   tiyn: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><path d="M12 3.5v4M12 16.5v4"/>',
+  hq: '<path d="M3 21h18M5 21V11h14v10"/><path d="M3 11l9-6 9 6"/><path d="M10 21v-5h4v5"/><path d="M12 5V1.5l4 1.2-4 1.3"/>',
   aux: '<path d="M4 21V10l8-6 8 6v11z"/><path d="M9 21v-6h6v6M12 4v-1.5"/><path d="M12 2.5h4l-1 1.5 1 1.5h-4"/>',
   map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
   book: '<path d="M5 4a1 1 0 0 1 1-1h13v16H6a1 1 0 0 0-1 1z"/><path d="M5 20a1 1 0 0 0 1 1h13M9 7h6"/>',

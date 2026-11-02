@@ -273,9 +273,14 @@ const MapView = {
       const def = BUILDINGS[b.type];
       const mine = own[b.cell] === Game.player;
       // главные здания видны всегда, на любом зуме
-      const main = b.type !== 'shield' && b.type !== 'gen';
+      const main = b.type !== 'shield' && b.type !== 'gen' && (b.type !== 'hq' || mine);
       if (main || s >= 7 || (mine && s >= 3.5)) {
         this.badge(ctx, b.type, def.color, px, py, main && s < 7 ? Math.max(11, s * 2.4) : bs);
+        if (mine && Buildings.hasReward(b)) {
+          const sz = main && s < 7 ? Math.max(11, s * 2.4) : bs;
+          ctx.beginPath(); ctx.arc(px + sz * 0.38, py - sz * 0.38, Math.max(4, sz * 0.2), 0, Math.PI * 2);
+          ctx.fillStyle = '#facc15'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#fff'; ctx.stroke();
+        }
         if (b.type === 'shield' && s >= 10) {
           ctx.font = `700 ${Math.min(12, s * 0.45)}px system-ui`;
           ctx.textAlign = 'center'; ctx.textBaseline = 'top';
@@ -392,6 +397,11 @@ const MapView = {
     const k = this.cellAt(px, py);
     if (k == null) return;
     if (this.mode === 'capture') { Game.playerCapture(k); return; }
+    if (this.mode === 'move') {
+      const err = Buildings.move(this.moveB, k);
+      if (err) U.toast(err); else { U.toast('Здание перемещено'); this.setMode(null); }
+      return;
+    }
     if (this.mode) {
       Game.t = Date.now();
       const err = Buildings.build(this.mode, Game.player, k);
@@ -439,7 +449,7 @@ const MapView = {
       if (bl.length) {
         const cnt = {};
         bl.forEach(b => cnt[b.type] = (cnt[b.type] || 0) + 1);
-        h += `<div class="bl">${Object.entries(cnt).map(([t, n]) => `<span title="${BUILDINGS[t].name}" style="background:${BUILDINGS[t].color}">${ic(t)}${n}</span>`).join('')}</div>`;
+        h += `<div class="bl">${Object.entries(cnt).map(([t, n]) => `<button data-btype="${t}" data-bo="${o}" title="${BUILDINGS[t].name} — нажми, чтобы узнать" style="background:${BUILDINGS[t].color}">${ic(t)}${n}</button>`).join('')}</div>`;
       }
       const arm = Game.armorOf(k);
       if (me) h += `<div class="armor">${ic('shield')} Укрепление клетки: <b>${arm}</b> ${U.plural(arm, 'удар', 'удара', 'ударов')}<small>Включи «Захват» и нажми на эту клетку — каждый заряд добавляет +1 удар, который она выдержит</small></div>`;
@@ -450,6 +460,7 @@ const MapView = {
         if (b.type === 'shield') extra = `${b.hp}/${BUILDINGS.shield.hp} HP. ` + extra;
         if (['gen', 'mine', 'barracks'].includes(b.type)) extra += `. Следующий доход через ${Math.ceil((DAY - (Date.now() - b.builtAt) % DAY) / HOUR)} ч`;
         h += `<div class="muted" style="margin-top:6px"><b>${BUILDINGS[b.type].name}:</b> ${extra}</div>`;
+        h += `<button class="btn ${me ? 'primary' : ''}" data-open-b="${b.id}" style="margin-top:8px;width:100%">${ic(b.type)} ${me ? 'Зайти в здание' : 'Подробнее о здании'}${me && Buildings.hasReward(b) ? ' · есть награда' : ''}</button>`;
       }
       if (!me) {
         const reach = Game.reach(k);
@@ -464,7 +475,70 @@ const MapView = {
     box.classList.remove('hidden');
     U.$('#ci-x').onclick = () => { box.classList.add('hidden'); this.sel = null; this.draw(); };
     U.$$('[data-dip]', box).forEach(b => b.onclick = () => this.diplomacy(b.dataset.dip, +b.dataset.c));
+    U.$$('[data-btype]', box).forEach(b => b.onclick = () => this.openType(+b.dataset.bo, b.dataset.btype));
+    U.$$('[data-open-b]', box).forEach(b => b.onclick = () => this.openBuilding(+b.dataset.openB));
   },
+
+  // ---------- окна зданий ----------
+  // все здания одного типа у страны (по клику на значок в карточке)
+  openType(o, type) {
+    const def = BUILDINGS[type], me = o === Game.player;
+    const list = Buildings.owned(o).filter(b => b.type === type);
+    U.modal(`<h2><span class="sic" style="background:${def.color}">${ic(type)}</span> ${def.name} <button class="x" data-close>${ic('x')}</button></h2>
+      <div class="hint">${def.desc}</div>
+      <div class="hint">${this.chip(o)} — ${list.length} шт.${!def.special ? ` · лимит ${Buildings.limit(type, o)}` : ''}</div>
+      <div class="blist">${list.map((b, j) => `<button class="item" data-b="${b.id}"><span class="name">${def.name} №${j + 1}</span><span class="t">${me && Buildings.hasReward(b) ? 'есть награда · ' : ''}${b.lvl ? 'ур. ' + b.lvl + ' · ' : ''}${b.hp != null ? b.hp + ' HP · ' : ''}показать</span></button>`).join('')}</div>`, root => {
+      U.$$('[data-b]', root).forEach(el => el.onclick = () => { const b = Game.s.buildings.find(x => x.id === +el.dataset.b); U.closeModal(); this.focusCell(b.cell); this.openBuilding(b.id); });
+    });
+  },
+  focusCell(k) {
+    const [x, y] = Game.xy(k);
+    this.cam.s = Math.max(this.cam.s, 16);
+    this.cam.x = x + 0.5 - this.cw / 2 / this.cam.s;
+    this.cam.y = y + 0.5 - this.ch / 2 / this.cam.s;
+    this.clamp(); this.sel = k; this.draw();
+  },
+  // окно одного здания: награда, перемещение, детали
+  openBuilding(id) {
+    const draw = root => {
+      const b = Game.s.buildings.find(x => x.id === id);
+      if (!b) { U.closeModal(); return; }
+      const def = BUILDINGS[b.type], o = Game.own[b.cell], me = o === Game.player;
+      let h = `<div class="hint">${def.desc}</div><div class="hint">Владелец: ${this.chip(o)}</div>`;
+      if (['gen', 'mine', 'barracks'].includes(b.type)) {
+        const next = Math.ceil((DAY - (Date.now() - b.builtAt) % DAY) / HOUR);
+        h += `<div class="milcard"><div class="lh">${ic('gift')} Внутри: ${me ? (Buildings.storeText(b.store) || 'пусто') : 'неизвестно'}</div>
+          <div class="hint">Следующий доход через ${next} ч. Награда копится, пока не заберёшь. Если здание захватят — всё внутри пропадёт.</div>
+          ${me ? `<button class="btn primary" data-collect style="width:100%;margin-top:6px" ${Buildings.hasReward(b) ? '' : 'disabled'}>Забрать награду</button>` : ''}</div>`;
+      }
+      if (b.type === 'hq') {
+        h += `<div class="milsum"><div><small>Уровень</small><b>${Military.level(o)}</b></div><div><small>Сила</small><b class="big">${Math.round(Game.eff(o))}</b></div><div><small>Вспомогательные</small><b>+${Math.round(Military.auxBonus(o) * 100)}%</b></div><div><small>Армия</small><b>${Military.hungry(o) ? 'голодает' : 'сыта'}</b></div></div>`;
+        if (me) h += `<div class="milcard"><div class="lh">${ic('tiyn', 'tiyn')} Налог в базе: ${Math.floor(Game.s.taxStore)} тиын</div><div class="hint">${Game.cells(o)} клеток × ${Military.TAX} тиын в сутки.</div>
+          <div class="actions"><button class="btn primary grow" data-collect ${Buildings.hasReward(b) ? '' : 'disabled'}>Забрать налог</button><button class="btn grow" data-army>${ic('power')} Армия: прокачка и корм</button></div></div>`;
+      }
+      if (b.type === 'aux') h += `<div class="milcard"><div class="lh">${ic('aux')} Ур. ${b.lvl} · +${Math.round(b.lvl * Military.AUX_STEP * 100)}% к силе${!(b.fedUntil > Date.now()) ? ' · голодает' : ''}</div>${me ? `<button class="btn" data-army style="width:100%;margin-top:6px">${ic('power')} Прокачать и покормить</button>` : ''}</div>`;
+      if (b.type === 'shield') h += `<div class="hint">Прочность: ${b.hp}/${def.hp} HP, радиус ${b.r}</div>`;
+      if (b.type === 'cosmo') h += `<div class="hint">${Buildings.cosmoReady(o) ? 'Готов к удару' : 'Перезаряжается'}</div>`;
+      if (me) {
+        const can = Buildings.canMoveToday();
+        h += `<div class="milcard"><div class="lh">${ic('crosshair')} Переместить</div><div class="hint">Одно здание в день можно перенести на любую свою свободную клетку. ${can ? 'Сегодня ещё можно.' : 'Сегодня уже переносил — завтра снова можно.'}</div>
+          <button class="btn" data-move style="width:100%;margin-top:6px" ${can ? '' : 'disabled'}>Выбрать новое место</button></div>`;
+      }
+      U.$('#bld-body', root).innerHTML = h;
+      U.$('#bld-title', root).innerHTML = `<span class="sic" style="background:${def.color}">${ic(b.type)}</span> ${def.name}`;
+    };
+    U.modal(`<h2><span id="bld-title"></span> <button class="x" data-close>${ic('x')}</button></h2><div id="bld-body"></div>`, root => {
+      draw(root);
+      root.onclick = e => {
+        const b = Game.s.buildings.find(x => x.id === id);
+        if (!b) return;
+        if (e.target.closest('[data-collect]')) { const err = Buildings.collect(b); U.toast(err || 'Забрано!'); Game.changed(); draw(root); }
+        else if (e.target.closest('[data-army]')) { U.closeModal(); Military.open(); }
+        else if (e.target.closest('[data-move]')) { U.closeModal(); this.moveB = b; this.setMode('move'); }
+      };
+    }, 'wide');
+  },
+
 
   setMode(m) {
     this.mode = m;
@@ -479,7 +553,9 @@ const MapView = {
       U.toast('Нет зарядов захвата — купи в магазине');
       return;
     }
-    U.$('#mode-text').innerHTML = m === 'capture'
+    U.$('#mode-text').innerHTML = m === 'move'
+      ? `${ic(this.moveB.type)} Нажми на свою свободную клетку, куда перенести: ${BUILDINGS[this.moveB.type].name.toLowerCase()}`
+      : m === 'capture'
       ? `${ic('swords')} Чужая клетка — захват (${Game.s.level} кл.), своя — укрепить (+1 удар)`
       : `${ic(m)} Нажми на свою клетку, чтобы поставить: ${BUILDINGS[m].name.toLowerCase()}`;
     bar.classList.remove('hidden');

@@ -572,3 +572,20 @@ body.locked .page, body.locked .tabs, body.locked .wallet { visibility: hidden; 
 .feed { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .feed .btn { padding: 6px 10px; font-size: 13px; }
 @media (max-width: 760px) { .milsum { grid-template-columns: repeat(2, 1fr); } }
+
+/* окна зданий */
+.bl button { display: inline-flex; align-items: center; gap: 3px; color: #fff; font-size: 12px; font-weight: 700; padding: 2px 7px 2px 5px; border-radius: 20px; cursor: pointer; }
+.bl button:hover { filter: brightness(1.15); }
+.bl .ic { width: 13px; height: 13px; }
+.modal h2 .sic { width: 32px; height: 32px; }
+.modal h2 .sic .ic { width: 18px; height: 18px; }
+.blist { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.blist .item { width: 100%; border-left: 4px solid #cbd5e1; background: var(--bg); text-align: left; }
+.milcard.tax { background: #f8fafc; }
+#bld-title { display: inline-flex; align-items: center; gap: 8px; }
+.tab { white-space: nowrap; }
+@media (max-width: 1060px) {
+  .brand span { display: none; }
+  .tab { padding: 6px 10px; }
+  .wallet { gap: 8px; }
+}

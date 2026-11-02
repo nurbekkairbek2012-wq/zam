@@ -16,7 +16,9 @@ const Military = {
     const s = Game.s;
     if (s.tiyn == null) s.tiyn = this.START_TIYN;
     s.taxAcc = s.taxAcc || 0;
+    s.taxStore = s.taxStore || 0;
     Game.countries.forEach((c, i) => { if (c) this.mainOf(i); });
+    this.ensureHQs();
   },
 
   // ---------- основная база ----------
@@ -51,6 +53,60 @@ const Military = {
   // сила армии до учёта размера страны и болезней
   power(i) {
     return this.level(i) * (1 + this.auxBonus(i)) * (this.hungry(i) ? this.HUNGRY : 1);
+  },
+
+  // ---------- здание основной базы ----------
+  hqOf(i) { return Buildings.index().hq.get(i) || null; },
+  // свободная своя клетка поближе к столице
+  hqCell(i, avoid) {
+    const L = Game.lists[i];
+    if (!L || !L.length) return null;
+    const cap = Game.countries[i].capital;
+    const from = cap != null && Game.own[cap] === i ? cap : L[0];
+    let best = null, bd = Infinity;
+    for (const k of L) {
+      if (k === avoid || Buildings.at(k)) continue;
+      const d = Game.dist2(from, k);
+      if (d < bd) { bd = d; best = k; }
+    }
+    return best;
+  },
+  ensureHQs() {
+    Game.countries.forEach((c, i) => {
+      if (!c || !Game.cells(i) || this.hqOf(i)) return;
+      const k = this.hqCell(i);
+      if (k == null) return;
+      Game.s.buildings.push({ id: Game.s.nextId++, type: 'hq', cell: k, builtAt: Game.t, paid: 0 });
+      Buildings.invalidate();
+    });
+  },
+  // базу захватили или выжгли: переезжает, при захвате — уровень −1 и налог пропадает
+  hqLost(b, old, now) {
+    const G = Game, P = G.player;
+    if (!G.countries[old]) return;
+    const captured = now !== OCEAN && now < FLOOD;
+    if (captured) {
+      const st = this.mainOf(old);
+      st.mil = Math.max(1, st.mil - 1);
+      if (old === P) {
+        const lost = Math.floor(G.s.taxStore);
+        G.s.taxStore = 0;
+        G.log(`Твою основную военную базу захватила ${G.c(now)}! Уровень −1 (теперь ${st.mil})${lost ? `, несобранный налог ${lost} тиын пропал` : ''}. База переехала на другую клетку`, 'loss', 'alert');
+      }
+    }
+    const k = this.hqCell(old, b.cell);
+    if (k == null) { G.s.buildings = G.s.buildings.filter(x => x !== b); Buildings.invalidate(); return; }
+    b.cell = k;
+    Buildings.invalidate();
+  },
+  collectTax() {
+    const n = Math.floor(Game.s.taxStore);
+    if (!n) return 'Налог ещё не накопился';
+    Game.s.taxStore -= n;
+    Game.s.tiyn += n;
+    Stats.bump('tax', n);
+    Game.log(`Налог с территории собран: +${n} тиын`, 'reward', 'tiyn', Date.now());
+    return null;
   },
 
   // ---------- тиын ----------
@@ -126,12 +182,8 @@ const Military = {
   // ---------- ход мира: налог, ИИ кормит и качает базы ----------
   tick(mult = 1) {
     const G = Game, dayFrac = G.TICK_MS / DAY * mult;
-    G.s.taxAcc += G.cells(G.player) * this.TAX * dayFrac;
-    if (G.s.taxAcc >= 1) {
-      const n = Math.floor(G.s.taxAcc);
-      G.s.taxAcc -= n; G.s.tiyn += n;
-      Stats.bump('tax', n);
-    }
+    if (this.hqOf(G.player)) G.s.taxStore += G.cells(G.player) * this.TAX * dayFrac;
+    this.ensureHQs();
     // предупреждения игроку о корме
     const me = this.mainOf(G.player), left = me.milFed - G.t;
     if (left <= 0 && !G.s.hungryLog) { G.s.hungryLog = 1; G.log('Армия голодает! Сила снижена вдвое — покорми основную базу в окне «Армия»', 'loss', 'alert'); }
@@ -218,6 +270,7 @@ const Military = {
           <div><small>Земля</small><b>×${br.land.toFixed(2)}</b></div>
           <div><small>Итоговая сила</small><b class="big">${Math.round(br.total)}</b></div>
         </div>
+        <div class="milcard tax"><div class="lh">${ic('tiyn', 'tiyn')} Налог с территории в базе: ${Math.floor(Game.s.taxStore)} тиын</div><div class="hint">${Game.cells(P)} клеток × ${this.TAX} тиын в сутки. Если базу захватят — несобранный налог пропадёт.</div><button class="btn primary" data-tax style="width:100%;margin-top:6px" ${Math.floor(Game.s.taxStore) ? '' : 'disabled'}>Забрать налог</button></div>
         ${br.hungry ? `<div class="hint warn">${ic('alert')} Армия голодает — сила снижена вдвое. Покорми основную базу!</div>` : ''}
         ${br.sick ? `<div class="hint warn">${ic('virus')} Эпидемия: сила −40%</div>` : ''}
         <div class="milcard">
@@ -246,7 +299,8 @@ const Military = {
         let err;
         const up = e.target.closest('[data-up]');
         const fd = e.target.closest('[data-feed]');
-        if (up) err = up.dataset.up === 'main' ? this.upgradeMain() : this.upgradeAux(+up.dataset.up);
+        if (e.target.closest('[data-tax]')) err = this.collectTax();
+        else if (up) err = up.dataset.up === 'main' ? this.upgradeMain() : this.upgradeAux(+up.dataset.up);
         else if (fd) err = this.feed(fd.dataset.feed === 'main' ? 'main' : +fd.dataset.feed, +fd.dataset.days);
         else if (e.target.closest('[data-build-aux]')) {
           if (Game.s.diamonds < BUILDINGS.aux.cost.d) return U.toast('Не хватает алмазов');
