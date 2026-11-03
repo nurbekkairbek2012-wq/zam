@@ -25,7 +25,9 @@ const Diplo = {
   enemy(w, i) { return w.a === i ? w.b : w.a; },
   won(w, i) { return w.a === i ? w.sa : w.sb; },
   unread() { return Game.s.mail.filter(m => m.status === 'new').length; },
-  myAlly() { const s = Game.s.cs[Game.player]; return s && s.ally != null && s.allyUntil > Date.now() ? s.ally : null; },
+  MAX_ALLIES: 3,
+  myAllies() { return Game.alliesOf(Game.player); },
+  canAllyMore() { return this.myAllies().length < this.MAX_ALLIES; },
 
   declare(a, b, reason) {
     const G = Game, P = G.player;
@@ -176,8 +178,8 @@ const Diplo = {
   },
   allianceLetter() {
     const G = Game, P = G.player;
-    if (this.myAlly() != null) return;
-    const nb = this.neighbours(P).filter(i => !this.atWar(i, P) && !G.angry(i) && !(G.s.cs[i]?.allyUntil > G.t));
+    if (!this.canAllyMore()) return;
+    const nb = this.neighbours(P).filter(i => !this.atWar(i, P) && !G.angry(i) && !G.allied(i, P));
     if (!nb.length) return;
     const i = G.rand(nb), r = Math.random();
     const offer = r < 0.4 ? { give: { d: 5 + Math.round(Math.random() * 15) } } : r < 0.7 ? { ask: { d: 5 + Math.round(G.eff(i) * 0.3) } } : {};
@@ -223,7 +225,8 @@ const Diplo = {
       this.pay(m.offer, m.from);
       this.end(w, 'peace', this.TRUCE_DAYS);
     } else if (m.kind === 'alliance') {
-      if (this.myAlly() != null) return 'У тебя уже есть союзник';
+      if (G.allied(m.from, P)) { m.status = 'accepted'; return 'Вы уже союзники'; }
+      if (!this.canAllyMore()) return `У тебя уже ${this.MAX_ALLIES} союзника — больше нельзя`;
       if (this.atWar(m.from, P)) return 'Вы воюете';
       if (!this.canPay(m.offer)) return 'Не хватает ресурсов';
       this.pay(m.offer, m.from);
@@ -238,8 +241,7 @@ const Diplo = {
   },
   ally(i) {
     const G = Game, P = G.player, until = Date.now() + this.ALLY_DAYS * DAY;
-    Object.assign(G.st(i), { ally: P, allyUntil: until });
-    Object.assign(G.st(P), { ally: i, allyUntil: until });
+    G.allyAdd(P, i, until);
     Stats.bump('alliances_me');
     G.log(`Союз с ${G.c(i)} на ${this.ALLY_DAYS} дня: она не нападёт на тебя и поможет в твоих атаках`, 'me', 'ally');
   },
@@ -272,8 +274,9 @@ const Diplo = {
     G.t = Date.now();
     d = Math.max(0, Math.floor(d || 0)); g = Math.max(0, Math.floor(g || 0));
     if (this.atWar(i, P)) return { err: 'Сначала помиритесь' };
-    if (this.myAlly() != null) return { err: 'У тебя уже есть союзник' };
-    if (G.s.cs[i]?.allyUntil > Date.now()) return { err: 'У этой страны уже есть союзник' };
+    if (G.allied(i, P)) return { err: 'Вы уже союзники' };
+    if (!this.canAllyMore()) return { err: `У тебя уже ${this.MAX_ALLIES} союзника — больше нельзя` };
+    if (!G.ai(i) || G.countries[i].kind === 'alien') return { err: 'С этой страной союз невозможен' };
     if (G.s.diamonds < d || G.s.gold < g) return { err: 'Не хватает ресурсов' };
     const s = G.st(i);
     if (s.envoyAt && Date.now() - s.envoyAt < 2 * HOUR) return { err: 'Посол ещё не вернулся — попробуй позже' };

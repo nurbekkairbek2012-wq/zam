@@ -9,7 +9,7 @@ const BUILDINGS = {
   shield:   { name: 'Щит', color: '#2563eb', cost: { d: 30 }, div: 60, desc: '10 HP, радиус 4: каждая отбитая атака на клетку внутри = −1 HP. От штрафа за пропуск не спасает', hp: 10, r: 4 },
   aux:      { name: 'Вспомогательная база', color: '#9f1239', cost: { d: 30 }, div: 100, desc: 'До +20% к силе основной военной базы (+2% за уровень). Кормится отдельно — голодная не помогает' },
   barracks: { name: 'Казарма', color: '#4d7c0f', cost: { d: 70 }, div: 150, desc: '+1 бесплатный заряд захвата каждые 24 ч' },
-  port:     { name: 'Порт', color: '#0369a1', cost: { d: 70 }, div: 150, coastal: true, desc: 'Захват через море — до 10 клеток от порта. Ставится только у моря' },
+  port:     { name: 'Порт', color: '#0369a1', cost: { d: 70 }, div: 150, coastal: true, desc: 'Захват через море — 15 клеток от порта, каждый уровень +5 (до 35). Ставится только у моря' },
   cosmo:    { name: 'Космодром', color: '#dc2626', cost: { d: 150, g: 5 }, div: 400, desc: 'Раз в сутки — захват в любой точке мира' },
   obs:      { name: 'Обсерватория', color: '#7c3aed', cost: { d: 60 }, div: 300, desc: 'Предупреждает о метеоритах, цунами и ураганах за час. Стихия не ломает постройки владельца' },
 };
@@ -102,6 +102,29 @@ const Buildings = {
     const mine = list.filter(b => Game.own[b.cell] === Game.player || b.prevOwner === Game.player);
     Game.s.buildings = Game.s.buildings.filter(b => !del.has(b));
     if (mine.length) Game.log(`Потеряны постройки (${why}): ${mine.map(b => BUILDINGS[b.type].name.toLowerCase()).join(', ')}`, 'loss', 'alert');
+  },
+
+  // ---------- порт: дальность по уровню и следы высадок ----------
+  PORT_MAX: 5,
+  portReach(b) { return 15 + 5 * ((b.lvl || 1) - 1); },
+  portUpCost(b) { return 300 * (b.lvl || 1); },
+  portFor(o, k) {
+    return Game.s.buildings.find(b => b.type === 'port' && Game.own[b.cell] === o && Game.dist2(b.cell, k) <= this.portReach(b) ** 2) || null;
+  },
+  upgradePort(b) {
+    if (Game.own[b.cell] !== Game.player) return 'Это не твой порт';
+    if ((b.lvl || 1) >= this.PORT_MAX) return 'Максимальный уровень';
+    const cost = this.portUpCost(b);
+    if (!Military.payTiyn(cost)) return 'Не хватает тиын и алмазов';
+    b.lvl = (b.lvl || 1) + 1;
+    Game.log(`Порт улучшен до ур. ${b.lvl}: дальность ${this.portReach(b)} клеток (−${cost} тиын)`, 'shop', 'port', Date.now());
+    return null;
+  },
+  // след от порта до места высадки — виден сутки
+  trail(from, to, owner) {
+    Game.s.trails = Game.s.trails || [];
+    Game.s.trails.push({ a: from, b: to, o: owner, t: Game.t });
+    if (Game.s.trails.length > 120) Game.s.trails = Game.s.trails.slice(-120);
   },
 
   // ---------- награды внутри зданий ----------
@@ -253,6 +276,10 @@ const Buildings = {
           const k = Game.rand(L);
           if (Game.nbrs(k).some(n => Game.own[n] !== o && Game.own[n] !== OCEAN)) { Game.fortify(k); s.dia -= Game.COST.capture; break; }
         }
+      }
+      if (b.port && Math.random() < 0.005 * Game.tickFrac() * mult) {
+        const pb = Game.s.buildings.find(x => x.type === 'port' && Game.own[x.cell] === o && (x.lvl || 1) < this.PORT_MAX);
+        if (pb && s.dia >= this.portUpCost(pb) / 100 + 20) { s.dia -= this.portUpCost(pb) / 100; pb.lvl = (pb.lvl || 1) + 1; }
       }
       const up = Game.upgradeCost(s.lvl);
       if (s.lvl < 3 && s.gold >= up.g && s.dia >= up.d + 50) {

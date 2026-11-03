@@ -13,6 +13,8 @@ const ALIEN_COOLDOWN = 30 * DAY; // не чаще раза в месяц
 const SICK_DAYS = 7;
 
 const World = {
+  SICK_NEIGHBOUR: 0.1, // шанс заразить соседа
+  SICK_WAR: 0.1,       // шанс заразиться за сутки долгой войны с больной страной
   HUNT_RATE: 0.5, // как часто соседи «добивают» слабеющую страну (за полчаса)
   CALM_SKIP: 0.5, // как часто сосед передумывает нападать на тебя без повода
   BATTLES_PER_TICK: 1.7, // ≈ 80 попыток (около 50 удачных стычек) в сутки на весь мир
@@ -106,13 +108,13 @@ const World = {
       const k = G.rand(L);
       for (const nb of G.nbrs(k)) if (okTarget(G.own[nb])) fronts.push(nb);
     }
-    let how = '';
+    let how = '', navalFrom = null;
     const ports = (counts.get(a) || {}).port ? G.s.buildings.filter(b => b.type === 'port' && G.own[b.cell] === a) : [];
     if (ports.length && (Math.random() < 0.25 || !fronts.length)) {
-      const p = G.rand(ports);
+      const p = G.rand(ports), R = Buildings.portReach(p);
       for (let i = 0; i < 40; i++) {
-        const k = p.cell + Math.round((Math.random() * 2 - 1) * 10) + Math.round((Math.random() * 2 - 1) * 10) * G.W;
-        if (k >= 0 && k < G.own.length && okTarget(G.own[k]) && G.dist2(p.cell, k) <= 100) { fronts.length = 0; fronts.push(k); how = 'морской десант'; break; }
+        const k = p.cell + Math.round((Math.random() * 2 - 1) * R) + Math.round((Math.random() * 2 - 1) * R) * G.W;
+        if (k >= 0 && k < G.own.length && okTarget(G.own[k]) && G.dist2(p.cell, k) <= R * R) { fronts.length = 0; fronts.push(k); how = 'морской десант'; navalFrom = p.cell; break; }
       }
     }
     if (!fronts.length) return null;
@@ -131,12 +133,13 @@ const World = {
       const lvl = G.level(a);
       const n = G.grab(a, d, cell, 1 + (Math.random() < 0.25 + 0.1 * (lvl - 1) ? 1 : 0));
       // союзник присоединяется
-      const ally = G.s.cs[a]?.allyUntil > G.t ? G.s.cs[a].ally : null;
-      if (ally && ally !== G.player && ally !== d && G.ai(ally) && G.cells(d)) {
+      const ally = G.alliesOf(a).find(x => x !== G.player && x !== d && G.ai(x));
+      if (ally && G.cells(d)) {
         const front = G.lists[d].find(c => G.nbrs(c).some(nb => G.own[nb] === ally));
         if (front != null) G.grab(ally, d, front, 1);
       }
       if (revenge && n) { const s = G.st(a); s.grudge = Math.max(0, s.grudge - n); }
+      if (n && navalFrom != null) Buildings.trail(navalFrom, cell, a);
       return { a, d, n, how, revenge };
     }
     if (Math.random() < 0.25 && d !== G.player) {
@@ -265,9 +268,11 @@ const World = {
       k = c;
     }
     if (k == null) return;
-    G.s.pending.push({ type, cell: k, at: G.t + HOUR });
+    const at = G.t + DAY;
+    G.s.pending.push({ type, cell: k, at });
     if (Buildings.count('obs', G.player)) {
-      G.log(`Обсерватория: через час ${EVENTS[type].name.toLowerCase()} — удар по стране ${G.c(G.own[k])}`, 'event', 'obs');
+      const [x, y] = G.xy(k);
+      G.log(`Обсерватория: ${U.stamp(at)} (через сутки) ${EVENTS[type].name.toLowerCase()} ударит по стране ${G.c(G.own[k])} — клетка ${x}:${y} [[k:${k}]]`, 'event', 'obs');
     }
   },
   runPending() {
@@ -405,12 +410,19 @@ const World = {
     for (const j of this.neighbours(i)) {
       const js = G.st(j);
       if (G.sick(j) || js.sickAt || (js.immune && js.immune > G.t)) continue;
-      if (Math.random() < 0.4) js.sickAt = G.t + (0.5 + Math.random() * 1.5) * DAY;
+      if (Math.random() < this.SICK_NEIGHBOUR) js.sickAt = G.t + (0.5 + Math.random() * 1.5) * DAY;
     }
   },
   // война с заражённым — гарантированное заражение
   contagion(a, d) {
     const G = Game;
+    // болезнь передаётся только в долгой войне: раз в сутки шанс 10% для каждой пары
+    if (G.sick(a) === G.sick(d) || !Diplo.atWar(a, d)) return;
+    const day = U.ymd(new Date(G.t)), key = Math.min(a, d) + '-' + Math.max(a, d);
+    G.s.sickRolls = G.s.sickRolls && G.s.sickRolls.day === day ? G.s.sickRolls : { day };
+    if (G.s.sickRolls[key]) return;
+    G.s.sickRolls[key] = 1;
+    if (Math.random() >= this.SICK_WAR) return;
     if (G.sick(a) && !G.sick(d)) this.infect(d);
     else if (G.sick(d) && !G.sick(a)) this.infect(a);
   },
@@ -505,36 +517,31 @@ const World = {
   alliance() {
     const G = Game;
     const P = G.player;
+    // тебе союз не навязывается — приходит письмо-предложение
+    if (Math.random() < 0.2) return Diplo.allianceLetter();
+    const free = i => G.ai(i) && G.countries[i].kind === 'nation' && !G.alliesOf(i).some(x => x !== P);
+    const alive = G.countries.map((c, i) => i).filter(free);
     let a, b;
-    if (Math.random() < 0.2) {
-      const nb = this.neighbours(P).filter(i => G.ai(i) && G.countries[i].kind === 'nation' && !(G.s.cs[i]?.allyUntil > G.t));
-      if (nb.length && !(G.s.cs[P]?.allyUntil > G.t)) { a = P; b = G.rand(nb); }
-    }
-    if (a == null) {
-      const alive = G.countries.map((c, i) => i).filter(i => G.ai(i) && G.countries[i].kind === 'nation' && !(G.s.cs[i]?.allyUntil > G.t));
-      for (let tries = 0; tries < 10 && b == null; tries++) {
-        a = G.rand(alive);
-        const nb = this.neighbours(a).filter(i => G.ai(i) && G.countries[i].kind === 'nation' && !(G.s.cs[i]?.allyUntil > G.t));
-        if (nb.length) b = G.rand(nb);
-      }
+    for (let tries = 0; tries < 10 && b == null; tries++) {
+      a = G.rand(alive);
+      const nb = this.neighbours(a).filter(i => free(i) && !Diplo.atWar(a, i));
+      if (nb.length) b = G.rand(nb);
     }
     if (b == null) return;
-    const until = G.t + 2 * DAY;
     Stats.event('alliance', G.lists[a][0]);
-    Object.assign(G.st(a), { ally: b, allyUntil: until });
-    Object.assign(G.st(b), { ally: a, allyUntil: until });
-    G.log(a === P
-      ? `${G.c(b)} заключила с тобой военный союз на 2 дня: она не нападёт на тебя и поможет в твоих атаках`
-      : `Военный союз: ${G.c(a)} и ${G.c(b)} на 2 дня не воюют друг с другом и атакуют вместе`, a === P ? 'me' : 'event', 'ally');
+    G.allyAdd(a, b, G.t + 2 * DAY);
+    G.log(`Военный союз: ${G.c(a)} и ${G.c(b)} на 2 дня не воюют друг с другом и атакуют вместе`, 'event', 'ally');
   },
   alliancesStep() {
-    const G = Game;
-    for (const [key, s] of Object.entries(G.s.cs)) {
-      if (s.ally != null && s.allyUntil <= G.t) {
-        const i = +key, j = s.ally;
-        s.ally = null;
-        if (i < j || G.s.cs[j]?.ally !== i) G.log(`Союз ${G.c(i)} и ${G.c(j)} закончился`, i === G.player || j === G.player ? 'me' : 'event', 'ally');
-      }
+    const G = Game, list = G.s.alliances || [];
+    const ended = list.filter(x => x.until <= G.t);
+    if (!ended.length) return;
+    G.s.alliances = list.filter(x => x.until > G.t);
+    G._allyIdx = null;
+    for (const x of ended) {
+      if (!G.cells(x.a) || !G.cells(x.b)) continue;
+      const me = x.a === G.player || x.b === G.player;
+      G.log(`Союз ${G.c(x.a)} и ${G.c(x.b)} закончился${me ? '. Можно предложить новый в «Дипломатии»' : ''}`, me ? 'me' : 'event', 'ally');
     }
   },
 

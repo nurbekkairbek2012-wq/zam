@@ -70,6 +70,7 @@ const Game = {
     for (let k = 0; k < this.own.length; k++) if (this.isOccupied(k)) this.occ.add(k);
     Stats.init();
     Diplo.init();
+    this.migrateAlliances();
     Military.init();
     if (!this.s.log.length) {
       this.t = Date.now();
@@ -205,7 +206,34 @@ const Game = {
   sick(i) { const s = this.s.cs[i]; return !!(s && s.sick && s.sick > this.t); },
   // страна мстит тебе за нападение (2 дня)
   angry(i) { const s = this.s.cs[i]; return !!(s && s.grudge > 0 && s.grudgeUntil > this.t); },
-  allied(a, b) { const s = this.s.cs[a]; return !!(s && s.ally === b && s.allyUntil > this.t); },
+  // ---------- союзы: список пар {a, b, until} ----------
+  allyIndex() {
+    const list = this.s.alliances || (this.s.alliances = []);
+    if (this._allyIdx && this._allyList === list && this._allyLen === list.length) return this._allyIdx;
+    const m = new Map();
+    for (const x of list) { m.set(x.a * 256 + x.b, x.until); m.set(x.b * 256 + x.a, x.until); }
+    this._allyIdx = m; this._allyList = list; this._allyLen = list.length;
+    return m;
+  },
+  allyUntil(a, b) { return this.allyIndex().get(a * 256 + b) || 0; },
+  allied(a, b) { return this.allyUntil(a, b) > this.t; },
+  alliesOf(i) {
+    return (this.s.alliances || []).filter(x => (x.a === i || x.b === i) && x.until > this.t).map(x => x.a === i ? x.b : x.a);
+  },
+  allyAdd(a, b, until) {
+    this.s.alliances = (this.s.alliances || []).filter(x => !((x.a === a && x.b === b) || (x.a === b && x.b === a)));
+    this.s.alliances.push({ a, b, until });
+    this._allyIdx = null;
+  },
+  // старые сохранения: союз хранился в полях ally/allyUntil у страны
+  migrateAlliances() {
+    this.s.alliances = this.s.alliances || [];
+    for (const [key, st] of Object.entries(this.s.cs)) {
+      if (st.ally != null && st.allyUntil > Date.now() && !this.allied(+key, st.ally)) this.allyAdd(+key, st.ally, st.allyUntil);
+      delete st.ally; delete st.allyUntil;
+    }
+  },
+
   level(i) { return i === this.player ? this.s.level : this.st(i).lvl; },
 
   eff(i) {
@@ -296,7 +324,9 @@ const Game = {
     s.dead = this.t; s.killer = killer;
     Stats.bump('deaths');
     s.respawnAt = c.kind === 'nation' && !c.noRespawn ? this.t + (4 + Math.random() * 6) * DAY : null;
-    s.sick = null; s.ally = null;
+    s.sick = null;
+    this.s.alliances = (this.s.alliances || []).filter(x => x.a !== d && x.b !== d);
+    this._allyIdx = null;
     if (killer === this.player) {
       const r = this.killReward(d);
       this.earn(r, 'kill');
@@ -379,7 +409,7 @@ const Game = {
     let near = false;
     this.around(k, 3.5, n => { if (this.own[n] === P) near = true; });
     if (near) return 'near';
-    if (this.s.buildings.some(b => b.type === 'port' && this.own[b.cell] === P && this.dist2(b.cell, k) <= 100)) return 'port';
+    if (Buildings.portFor(P, k)) return 'port';
     if (Buildings.cosmoReady(P)) return 'cosmo';
     return null;
   },
@@ -430,13 +460,14 @@ const Game = {
     gs.grudge = (gs.grudge || 0) + n;
     gs.grudgeUntil = Date.now() + 2 * DAY;
     Diplo.playerTook(def, n);
+    if (how === 'port') { const pb = Buildings.portFor(P, k); if (pb) Buildings.trail(pb.cell, k, P); }
     this.log(`Ты захватил ${n} ${U.plural(n, 'клетку', 'клетки', 'клеток')} у ${this.c(def)}${how === 'port' ? ' (морской десант)' : how === 'cosmo' ? ' (удар с космодрома)' : ''}`, 'me', 'swords', Date.now());
     this.checkDeath(def, P);
     // сильная обида может перерасти в долгую войну
     if (this.cells(def) && gs.grudge >= 4 && !Diplo.atWar(def, P) && Math.random() < 0.6) Diplo.declare(def, P, 'обида за твои нападения');
     // союзник помогает
-    const ally = this.s.cs[P]?.allyUntil > this.t ? this.s.cs[P].ally : null;
-    if (ally && this.cells(ally) && this.lists[ally].some(c => this.nbrs(c).some(nb => this.own[nb] === def))) {
+    const ally = this.alliesOf(P).find(i => this.cells(i) && this.lists[i].some(c => this.nbrs(c).some(nb => this.own[nb] === def)));
+    if (ally) {
       const front = this.lists[def].find(c => this.nbrs(c).some(nb => this.own[nb] === ally));
       if (front != null && this.grab(ally, def, front, 1)) this.log(`Союзник ${this.c(ally)} поддержал атаку и взял 1 кл. у ${this.c(def)}`, 'war', 'ally', Date.now());
     }

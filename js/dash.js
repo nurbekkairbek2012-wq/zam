@@ -379,7 +379,7 @@ const Dash = {
     const g7 = this.growth(7).sort((a, b) => b.v - a.v);
     const counts = Buildings.counts();
     const sick = alive.filter(i => Game.sick(i));
-    const allies = Object.values(Game.s.cs).filter(s => s.ally != null && s.allyUntil > Date.now()).length / 2;
+    const allies = (Game.s.alliances || []).filter(x => x.until > Date.now()).length;
     const aliens = alive.filter(i => Game.countries[i].kind === 'alien');
     const H = this.hist();
     const top5 = [...alive].sort((a, b) => Game.cells(b) - Game.cells(a)).slice(0, 5);
@@ -461,7 +461,7 @@ const Dash = {
         if (o === CRATER) return '#5c4636'; if (o === FLOOD) return '#78aad7';
         if (Game.countries[o].kind === 'alien') return '#6cf542';
         if (Game.sick(o)) return '#9333ea';
-        if (Game.s.cs[o]?.ally != null && Game.s.cs[o].allyUntil > Date.now()) return PAL[0];
+        if (Game.alliesOf(o).length) return PAL[0];
         return '#e7e5df';
       }, k => nm(k), Ch.legend([{ name: 'Эпидемия', color: '#9333ea' }, { name: 'Союз', color: PAL[0] }, { name: 'Кратер', color: '#5c4636' }, { name: 'Затоплено', color: '#78aad7' }, { name: 'Пришельцы', color: '#6cf542' }]))
       + W('wm-cont', 'Континенты', k => cont[k] && land(k) ? PAL[cont[k] - 1] : null, k => cont[k] ? CONT_NAMES[cont[k]] : '',
@@ -476,7 +476,7 @@ const Dash = {
       const n = Game.cells(i), w = Stats.cellsAgo(i, 7 * DAY);
       const b = Buildings.owned(i).length;
       const st = Game.s.cs[i] || {};
-      const status = !n ? 'погибла' : Game.sick(i) ? 'эпидемия' : st.ally != null && st.allyUntil > Date.now() ? 'союз' : c.kind === 'alien' ? 'пришельцы' : c.kind === 'rebel' ? 'повстанцы' : '';
+      const status = !n ? 'погибла' : Game.sick(i) ? 'эпидемия' : Game.alliesOf(i).length ? 'союз' : c.kind === 'alien' ? 'пришельцы' : c.kind === 'rebel' ? 'повстанцы' : '';
       return { i, name: Game.name(i), rank: rNow.get(i) ?? null, rd1: Stats.rankDelta(i, rNow, rDay), rd0: Stats.rankDelta(i, rNow, rStart), cells: n, dd1: Stats.cellsDelta(i, cDay), init: c.init, dc: n - c.init, d7: w == null ? null : n - w, power: Math.round(Game.eff(i)), b, status };
     }).filter(Boolean);
     const { key, dir } = this.sort;

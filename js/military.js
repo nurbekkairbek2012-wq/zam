@@ -183,6 +183,7 @@ const Military = {
   tick(mult = 1) {
     const G = Game, dayFrac = G.TICK_MS / DAY * mult;
     if (this.hqOf(G.player)) G.s.taxStore += G.cells(G.player) * this.TAX * dayFrac;
+    if (G.s.trails && G.s.trails.length) G.s.trails = G.s.trails.filter(x => G.t - x.t < DAY);
     this.ensureHQs();
     // предупреждения игроку о корме
     const me = this.mainOf(G.player), left = me.milFed - G.t;

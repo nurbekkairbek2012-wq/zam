@@ -41,6 +41,13 @@ const MapView = {
     };
     Game.listeners.push(() => this.onGameChange());
     this.onGameChange();
+    U.$('#chat-log').addEventListener('click', e => {
+      const g = e.target.closest('.goto');
+      if (!g) return;
+      if (App.tab !== 'map') App.show('map');
+      U.$('#chat').classList.remove('open');
+      this.focusCell(+g.dataset.cell);
+    });
     setInterval(() => this.skirmish(), 1800);
   },
 
@@ -241,6 +248,29 @@ const MapView = {
       }
     }
 
+    // следы морских высадок (держатся сутки)
+    for (const tr of Game.s.trails || []) {
+      const age = (Date.now() - tr.t) / DAY;
+      if (age >= 1) continue;
+      const [ax, ay] = Game.xy(tr.a), [bx, by] = Game.xy(tr.b);
+      const x1 = X(ax + 0.5), y1 = Y(ay + 0.5), x2 = X(bx + 0.5), y2 = Y(by + 0.5);
+      if (Math.max(x1, x2) < -50 || Math.min(x1, x2) > this.cw + 50 || Math.max(y1, y2) < -50 || Math.min(y1, y2) > this.ch + 50) continue;
+      const mine = tr.o === Game.player;
+      ctx.globalAlpha = 0.85 * (1 - age) + 0.1;
+      ctx.strokeStyle = mine ? '#0b4f8a' : '#0369a1';
+      ctx.lineWidth = mine ? 2.5 : 1.5;
+      ctx.setLineDash([6, 5]);
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 - Math.hypot(x2 - x1, y2 - y1) * 0.18;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(mx, my, x2, y2); ctx.stroke();
+      ctx.setLineDash([]);
+      const ang = Math.atan2(y2 - my, x2 - mx), L = Math.max(6, Math.min(12, s * 0.6));
+      ctx.beginPath(); ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - L * Math.cos(ang - 0.45), y2 - L * Math.sin(ang - 0.45));
+      ctx.lineTo(x2 - L * Math.cos(ang + 0.45), y2 - L * Math.sin(ang + 0.45));
+      ctx.closePath(); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
     // предупреждения обсерватории
     if (Buildings.count('obs', Game.player)) {
       for (const p of Game.s.pending) {
@@ -249,6 +279,10 @@ const MapView = {
         ctx.beginPath(); ctx.arc(px, py, Math.max(10, 4 * s), 0, Math.PI * 2);
         ctx.setLineDash([6, 4]); ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
         this.badge(ctx, EVENTS[p.type].icon, '#dc2626', px, py, bs);
+        const left = Math.max(0, Math.ceil((p.at - Date.now()) / HOUR));
+        ctx.font = '700 12px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.strokeText(`через ${left} ч`, px, py + bs / 2 + 2);
+        ctx.fillStyle = '#b91c1c'; ctx.fillText(`через ${left} ч`, px, py + bs / 2 + 2);
       }
     }
 
@@ -437,12 +471,12 @@ const MapView = {
         <div>Клеток: <b>${n}</b> (было ${c.init}) · Сила: <b>${Math.round(Game.eff(o))}</b></div>`;
       h += `<div class="muted">${ic('power')} Военная база ур. ${Military.level(o)}${Military.auxBonus(o) ? `, вспомогательные +${Math.round(Military.auxBonus(o) * 100)}%` : ''}${Military.hungry(o) ? ' · <b style="color:#b91c1c">армия голодает</b>' : ''}</div>`;
       if (Game.sick(o)) h += `<div class="tag purple">${ic('virus')} Эпидемия: сила −40%</div>`;
-      if (st.ally != null && st.allyUntil > Date.now()) h += `<div class="tag blue">${ic('ally')} Союз с ${this.chip(st.ally)}</div>`;
+      Game.alliesOf(o).forEach(a => { h += `<div class="tag blue">${ic('ally')} Союз с ${this.chip(a)} до ${U.stamp(Game.allyUntil(o, a))}</div>`; });
       if (c.kind === 'alien') h += `<div class="tag green">${ic('ufo')} Сильны в атаке, слабы в обороне</div>`;
       Diplo.warsOf(o).forEach(w => { const e = Diplo.enemy(w, o); h += `<div class="tag red">${ic('swords')} Война с ${this.chip(e)} до ${U.stamp(w.until)}</div>`; });
       if (!me) { const tr = Diplo.truce(Game.player, o); if (tr) h += `<div class="tag blue">${ic('peace')} Перемирие с тобой до ${U.stamp(tr.until)}</div>`; }
       if (!me && Game.angry(o)) h += `<div class="tag red">${ic('alert')} Обижена на тебя и мстит</div>`;
-      if (!me && c.kind !== 'alien') h += Diplo.atWar(o, Game.player)
+      if (!me && c.kind !== 'alien' && !Game.allied(o, Game.player)) h += Diplo.atWar(o, Game.player)
         ? `<button class="btn primary" style="margin-top:8px;width:100%" data-dip="wars" data-c="${o}">${ic('peace')} Предложить мир</button>`
         : `<button class="btn" style="margin-top:8px;width:100%" data-dip="allies" data-c="${o}">${ic('ally')} Предложить союз</button>`;
       const bl = Buildings.owned(o);
@@ -530,6 +564,12 @@ const MapView = {
           <div class="actions"><button class="btn primary grow" data-collect ${Buildings.hasReward(b) ? '' : 'disabled'}>Забрать налог</button><button class="btn grow" data-army>${ic('power')} Армия: прокачка и корм</button></div></div>`;
       }
       if (b.type === 'aux') h += `<div class="milcard"><div class="lh">${ic('aux')} Ур. ${b.lvl} · +${Math.round(b.lvl * Military.AUX_STEP * 100)}% к силе${!(b.fedUntil > Date.now()) ? ' · голодает' : ''}</div>${me ? `<button class="btn" data-army style="width:100%;margin-top:6px">${ic('power')} Прокачать и покормить</button>` : ''}</div>`;
+      if (b.type === 'port') {
+        const lvl = b.lvl || 1, max = lvl >= Buildings.PORT_MAX;
+        h += `<div class="milcard"><div class="lh">${ic('port')} Порт ур. ${lvl} · дальность ${Buildings.portReach(b)} клеток</div>
+          <div class="hint">Морской десант достаёт до клеток в этом радиусе. От порта до места высадки сутки виден след.</div>
+          ${me ? (max ? '<div class="hint">Максимальный уровень</div>' : `<button class="btn primary" data-port-up style="width:100%;margin-top:6px">${ic('up')} Ур. ${lvl + 1}: дальность ${Buildings.portReach({ lvl: lvl + 1 })} · ${Buildings.portUpCost(b)} тиын</button>`) : ''}</div>`;
+      }
       if (b.type === 'shield') h += `<div class="hint">Прочность: ${b.hp}/${def.hp} HP, радиус ${b.r}</div>`;
       if (b.type === 'cosmo') h += `<div class="hint">${Buildings.cosmoReady(o) ? 'Готов к удару' : 'Перезаряжается'}</div>`;
       if (me) {
@@ -545,6 +585,7 @@ const MapView = {
       root.onclick = e => {
         const b = Game.s.buildings.find(x => x.id === id);
         if (!b) return;
+        if (e.target.closest('[data-port-up]')) { const err = Buildings.upgradePort(b); U.toast(err || 'Порт улучшен'); Game.changed(); draw(root); return; }
         if (e.target.closest('[data-collect]')) { const err = Buildings.collect(b); U.toast(err || 'Забрано!'); Game.changed(); draw(root); }
         else if (e.target.closest('[data-army]')) { U.closeModal(); Military.open(); }
         else if (e.target.closest('[data-move]')) { U.closeModal(); this.moveB = b; this.setMode('move'); }
@@ -764,7 +805,7 @@ const MapView = {
     const list = Game.s.log.filter(m => !kinds || kinds.includes(m.kind)).slice(-200);
     const el = U.$('#chat-log');
     el.innerHTML = list.map(m => {
-      const text = U.esc(m.text).replace(/\[\[c:(\d+)\]\]/g, (_, i) => this.chip(+i));
+      const text = U.esc(m.text).replace(/\[\[c:(\d+)\]\]/g, (_, i) => this.chip(+i)).replace(/\[\[k:(\d+)\]\]/g, (_, k) => `<button class="goto" data-cell="${k}">${ic('crosshair')} показать на карте</button>`);
       return `<div class="msg ${m.kind}"><span class="mi">${ic(m.icon || 'info')}</span><div><time>${U.stamp(m.t)}</time>${text}</div></div>`;
     }).join('') || '<div class="empty">Пока пусто</div>';
     el.scrollTop = el.scrollHeight;
@@ -873,14 +914,22 @@ const MapView = {
         if (tr.length) h += '<h4 class="dh">Перемирия</h4>' + tr.map(x => `<div class="dep">${this.chip(x.a === P ? x.b : x.a)}<small>до ${U.stamp(x.until)}</small></div>`).join('');
       }
       if (tab === 'allies') {
-        const ally = Diplo.myAlly();
-        h = ally != null
-          ? `<div class="warcard"><div class="lh">${ic('ally')} Твой союзник: ${this.chip(ally)}<time>до ${U.stamp(Game.s.cs[P].allyUntil)}</time></div><div class="hint">Не нападает на тебя и помогает в твоих атаках.</div></div>`
-          : '<div class="hint">Союзника нет. Союзник не нападает на тебя и помогает захватывать. Предложи соседу плату за союз на 2 дня.</div>';
-        if (ally == null) {
-          const nb = Diplo.neighbours(P).filter(i => !Diplo.atWar(i, P)).sort((a, b) => (b === focus) - (a === focus));
-          h += nb.map(i => `<div class="warcard ${focus === i ? 'focus' : ''}"><div class="lh">${this.chip(i)}<time>сила ${Math.round(Game.eff(i))}${Game.angry(i) ? ' · обижена' : ''}${Game.s.cs[i]?.allyUntil > Date.now() ? ' · уже в союзе' : ''}</time></div>${offerForm('alliance', i)}</div>`).join('');
-        }
+        const allies = Diplo.myAllies();
+        h = allies.length
+          ? allies.map(a => `<div class="warcard"><div class="lh">${ic('ally')} Союзник: ${this.chip(a)}<time>до ${U.stamp(Game.allyUntil(P, a))}</time></div></div>`).join('') + '<div class="hint">Союзники не нападают на тебя, а соседний союзник помогает в твоих атаках.</div>'
+          : '<div class="hint">Союзников нет. Союзник не нападает на тебя и помогает захватывать.</div>';
+        if (Diplo.canAllyMore()) {
+          h += `<h4 class="dh">Предложить союз (можно до ${Diplo.MAX_ALLIES} союзников, на 2 дня)</h4><div class="hint">Укажи плату. Чем сильнее страна, тем больше она попросит; обиженные на тебя просят вдвое больше.</div>`;
+          const can = i => !Diplo.atWar(i, P) && !Game.allied(i, P) && Game.countries[i].kind !== 'alien';
+          const nb = Diplo.neighbours(P).filter(can);
+          if (focus != null && Game.countries[focus] && can(focus) && !nb.includes(focus)) nb.unshift(focus);
+          nb.sort((a, b) => (b === focus) - (a === focus));
+          h += nb.map(i => `<div class="warcard ${focus === i ? 'focus' : ''}"><div class="lh">${this.chip(i)}<time>сила ${Math.round(Game.eff(i))}${Game.angry(i) ? ' · обижена' : ''}</time></div>${offerForm('alliance', i)}</div>`).join('');
+          const all = Game.countries.map((c, i) => i).filter(i => Game.ai(i) && can(i) && !nb.includes(i)).sort((a, b) => Game.name(a).localeCompare(Game.name(b), 'ru'));
+          h += `<div class="warcard"><div class="lh">${ic('globe')} Любая другая страна</div>
+            <select class="input" id="ally-any" style="margin-top:8px">${all.map(i => `<option value="${i}">${U.esc(Game.name(i))} · сила ${Math.round(Game.eff(i))}</option>`).join('')}</select>
+            ${offerForm('alliance', 'any')}</div>`;
+        } else h += `<div class="hint">У тебя уже ${Diplo.MAX_ALLIES} союзника — новый можно, когда закончится один из союзов.</div>`;
       }
       if (tab === 'world') {
         const ws = Game.s.wars.filter(w => w.a !== P && w.b !== P);
@@ -912,7 +961,8 @@ const MapView = {
         if (ac) {
           const row = ac.closest('.offer');
           const d = +U.$('[data-d]', row).value || 0, g = +U.$('[data-g]', row).value || 0;
-          const r = ac.dataset.act === 'peace' ? Diplo.offerPeace(+ac.dataset.c, d, g) : Diplo.offerAlliance(+ac.dataset.c, d, g);
+          const target = ac.dataset.c === 'any' ? +U.$('#ally-any', root).value : +ac.dataset.c;
+          const r = ac.dataset.act === 'peace' ? Diplo.offerPeace(target, d, g) : Diplo.offerAlliance(target, d, g);
           U.toast(r.err || r.text);
           Game.changed();
           draw(root);
