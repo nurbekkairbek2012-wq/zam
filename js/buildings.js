@@ -123,8 +123,39 @@ const Buildings = {
   // след от порта до места высадки — виден сутки
   trail(from, to, owner) {
     Game.s.trails = Game.s.trails || [];
-    Game.s.trails.push({ a: from, b: to, o: owner, t: Game.t });
+    Game.s.trails.push({ a: from, b: to, o: owner, t: Game.t, p: this.seaPath(from, to) });
     if (Game.s.trails.length > 120) Game.s.trails = Game.s.trails.slice(-120);
+  },
+
+  // путь корабля по морским клеткам (только по горизонтали и вертикали)
+  seaPath(from, to) {
+    const G = Game, W = G.W;
+    const [fx, fy] = G.xy(from), [tx, ty] = G.xy(to);
+    const pad = 6, x0 = Math.max(0, Math.min(fx, tx) - pad), x1 = Math.min(W - 1, Math.max(fx, tx) + pad);
+    const y0 = Math.max(0, Math.min(fy, ty) - pad), y1 = Math.min(G.H - 1, Math.max(fy, ty) + pad);
+    const inBox = k => { const x = k % W, y = (k / W) | 0; return x >= x0 && x <= x1 && y >= y0 && y <= y1; };
+    const prev = new Map([[from, -1]]), q = [from];
+    let end = null;
+    while (q.length) {
+      const k = q.shift();
+      if (k !== from && G.nbrs(k).includes(to)) { end = k; break; }
+      for (const n of G.nbrs(k)) {
+        if (prev.has(n) || !inBox(n) || G.own[n] !== OCEAN) continue;
+        prev.set(n, k); q.push(n);
+      }
+    }
+    const path = [];
+    if (end != null) {
+      for (let k = end; k !== -1; k = prev.get(k)) path.push(k);
+      path.reverse(); path.push(to);
+    } else {
+      // моря нет — идём уголком по клеткам
+      let x = fx, y = fy;
+      path.push(from);
+      while (x !== tx) { x += Math.sign(tx - x); path.push(y * W + x); }
+      while (y !== ty) { y += Math.sign(ty - y); path.push(y * W + x); }
+    }
+    return path;
   },
 
   // ---------- награды внутри зданий ----------

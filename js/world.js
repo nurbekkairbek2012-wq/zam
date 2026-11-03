@@ -29,6 +29,7 @@ const World = {
       Buildings.produce();
       Buildings.aiEconomy(this._counts, SLOW);
       Military.tick(SLOW);
+      Items.aiTick(SLOW);
       Stats.snapshot();
       this.epidemicStep();
       this.alliancesStep();
@@ -100,7 +101,7 @@ const World = {
     }
     const isAlien = G.countries[a].kind === 'alien';
     const angry = G.angry(a);
-    const okTarget = o => o !== OCEAN && o < FLOOD && o !== a && !G.allied(a, o) && !Diplo.truce(a, o);
+    const okTarget = o => o !== OCEAN && o < FLOOD && o !== a && !G.allied(a, o) && !Diplo.truce(a, o) && !Items.hidden(o);
     const fronts = [];
     const L = G.lists[a];
     if (!L.length) return null;
@@ -127,11 +128,14 @@ const World = {
 
     this.contagion(a, d);
     const revenge = d === G.player && angry;
-    const A = G.eff(a) * (Buildings.isFort(cell) ? 0.6 : 1) * (G.orig[cell] === a ? 1.8 : 1) * (revenge ? 1.6 : 1);
+    const ram = Items.hasRam(a);
+    const A = G.eff(a) * (Buildings.isFort(cell) && !ram ? 0.6 : 1) * (G.orig[cell] === a ? 1.8 : 1) * (revenge ? 1.6 : 1);
     const D = G.defense(d);
     if (Math.random() < A * A / (A * A + D * D)) {
       const lvl = G.level(a);
-      const n = G.grab(a, d, cell, 1 + (Math.random() < 0.25 + 0.1 * (lvl - 1) ? 1 : 0));
+      if (ram) { G.st(a).ram = false; G.ramFor = a; }
+      const n = G.grab(a, d, cell, (1 + (Math.random() < 0.25 + 0.1 * (lvl - 1) ? 1 : 0)) * (ram ? 2 : 1));
+      G.ramFor = null;
       // союзник присоединяется
       const ally = G.alliesOf(a).find(x => x !== G.player && x !== d && G.ai(x));
       if (ally && G.cells(d)) {
@@ -156,6 +160,7 @@ const World = {
       if (!c || i === G.player || c.kind === 'alien' || !G.cells(i)) continue;
       if (G.cells(i) >= c.init * 0.35) continue; // слабеет — потеряла больше 65% своей земли
       if (Math.random() >= this.HUNT_RATE * f) continue;
+      if (Items.hidden(i)) continue;
       const hunters = this.neighbours(i).filter(j => G.ai(j) && !G.allied(i, j) && !Diplo.truce(i, j));
       if (!hunters.length) continue;
       hunters.sort((x, y) => G.eff(y) - G.eff(x));
@@ -178,7 +183,7 @@ const World = {
     for (let i = 0; i < 25; i++) {
       const k = list[(Math.random() * list.length) | 0];
       const holder = G.own[k], home = G.orig[k];
-      if (holder === G.player || home === G.player || !G.cells(home) || G.allied(home, holder) || Diplo.truce(home, holder)) continue;
+      if (holder === G.player || home === G.player || !G.cells(home) || G.allied(home, holder) || Diplo.truce(home, holder) || Items.hidden(holder)) continue;
       if (!G.nbrs(k).some(n => G.own[n] === home)) continue;
       if (G.tryTake(home, k) === 'ok') {
         G.checkDeath(holder, home);
@@ -195,7 +200,7 @@ const World = {
       const k = (Math.random() * G.own.length) | 0;
       const o = G.own[k];
       if (!G.isLand(k) || o === G.player) continue;
-      const nb = G.nbrs(k).find(n => G.isLand(n) && G.own[n] !== o && G.own[n] !== G.player && !G.allied(o, G.own[n]) && !Diplo.truce(o, G.own[n]));
+      const nb = G.nbrs(k).find(n => G.isLand(n) && G.own[n] !== o && G.own[n] !== G.player && !G.allied(o, G.own[n]) && !Diplo.truce(o, G.own[n]) && !Items.hidden(G.own[n]) && !Items.hidden(o));
       if (nb == null) continue;
       const other = G.own[nb];
       const [a, d, cell] = G.eff(o) >= G.eff(other) ? [o, other, nb] : [other, o, k];
@@ -292,15 +297,17 @@ const World = {
     if (!G.isLand(center)) return;
     const victim = G.own[center];
     const r = 2 + Math.random() * 2.5;
-    const cells = [], prev = [], at = [];
+    const cells = [], prev = [], at = [], rods = new Set();
     G.around(center, r, k => {
       if (!G.isLand(k)) return;
+      if (Items.hasRod(G.own[k])) { rods.add(G.own[k]); return; }
       if (G.own[k] === G.player && G.cells(G.player) - prev.filter(o => o === G.player).length <= 1) return;
       cells.push(k); prev.push(G.own[k]);
       // края зарастают быстрее, центр — ровно через неделю
       const d = Math.sqrt(G.dist2(center, k)) / r;
       at.push(G.t + DAY + (1 - d) * 6 * DAY);
     });
+    Items.spendRods(rods, 'метеорит');
     if (!cells.length) return;
     const lostB = Buildings.disaster(cells, 'метеорит');
     const mine = prev.filter(o => o === G.player).length;
@@ -317,15 +324,17 @@ const World = {
     const G = Game;
     const victim = G.own[center];
     if (!G.isLand(center)) return;
-    const cells = [], prev = [], at = [];
+    const cells = [], prev = [], at = [], rods = new Set();
     G.around(center, 7, k => {
       if (!G.isLand(k)) return;
       let nearSea = false;
       G.around(k, 2, n => { if (G.own[n] === OCEAN) nearSea = true; });
       if (!nearSea) return;
+      if (Items.hasRod(G.own[k])) { rods.add(G.own[k]); return; }
       if (G.own[k] === G.player && G.cells(G.player) - prev.filter(o => o === G.player).length <= 1) return;
       cells.push(k); prev.push(G.own[k]); at.push(G.t + 4 * DAY);
     });
+    Items.spendRods(rods, 'цунами');
     if (!cells.length) return;
     const lostB = Buildings.disaster(cells, 'цунами');
     const mine = prev.filter(o => o === G.player).length;
@@ -387,7 +396,14 @@ const World = {
         G.around(k, 1.8, c => hit.push(c));
         const counts = Buildings.counts();
         const set = new Set(hit);
-        const victims = G.s.buildings.filter(b => set.has(b.cell) && !(counts.get(G.own[b.cell])?.obs));
+        h.rods = h.rods || {};
+        const victims = G.s.buildings.filter(b => {
+          if (!set.has(b.cell) || counts.get(G.own[b.cell])?.obs) return false;
+          const o = G.own[b.cell];
+          if (h.rods[o]) return false;
+          if (Items.hasRod(o)) { h.rods[o] = 1; Items.spendRods([o], 'ураган'); return false; }
+          return true;
+        });
         const broken = [];
         for (const b of victims) {
           if (b.type === 'shield') { b.hp -= 3; if (b.hp <= 0) broken.push(b); }

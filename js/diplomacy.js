@@ -104,7 +104,7 @@ const Diplo = {
       const k = G.rand(L);
       for (const nb of G.nbrs(k)) if (G.own[nb] === def) fronts.push(nb);
     }
-    if (!fronts.length) return null;
+    if (!fronts.length || Items.hidden(def)) return null;
     const cell = G.rand(fronts);
     World.contagion(att, def);
     const A = G.eff(att) * 1.25 * (G.orig[cell] === att ? 1.6 : 1), D = G.defense(def);

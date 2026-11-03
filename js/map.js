@@ -261,10 +261,13 @@ const MapView = {
       ctx.strokeStyle = mine ? '#0b4f8a' : '#0369a1';
       ctx.lineWidth = mine ? 2.5 : 1.5;
       ctx.setLineDash([6, 5]);
-      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 - Math.hypot(x2 - x1, y2 - y1) * 0.18;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(mx, my, x2, y2); ctx.stroke();
+      const path = tr.p || Buildings.seaPath(tr.a, tr.b);
+      ctx.beginPath();
+      path.forEach((k, j) => { const [cx, cy] = Game.xy(k); const px = X(cx + 0.5), py = Y(cy + 0.5); j ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+      ctx.stroke();
       ctx.setLineDash([]);
-      const ang = Math.atan2(y2 - my, x2 - mx), L = Math.max(6, Math.min(12, s * 0.6));
+      const [lx, ly] = Game.xy(path[Math.max(0, path.length - 2)]);
+      const ang = Math.atan2(y2 - Y(ly + 0.5), x2 - X(lx + 0.5)), L = Math.max(6, Math.min(12, s * 0.6));
       ctx.beginPath(); ctx.moveTo(x2, y2);
       ctx.lineTo(x2 - L * Math.cos(ang - 0.45), y2 - L * Math.sin(ang - 0.45));
       ctx.lineTo(x2 - L * Math.cos(ang + 0.45), y2 - L * Math.sin(ang + 0.45));
@@ -473,6 +476,7 @@ const MapView = {
       h += `<div class="muted">${ic('power')} Военная база ур. ${Military.level(o)}${Military.auxBonus(o) ? `, вспомогательные +${Math.round(Military.auxBonus(o) * 100)}%` : ''}${Military.hungry(o) ? ' · <b style="color:#b91c1c">армия голодает</b>' : ''}</div>`;
       if (Game.sick(o)) h += `<div class="tag purple">${ic('virus')} Эпидемия: сила −40%</div>`;
       else if (me && Items.immuneUntil()) h += `<div class="tag green">${ic('pill')} Иммунитет до ${U.stamp(Items.immuneUntil())}</div>`;
+      Items.effects(o).forEach(e => { h += `<div class="tag blue">${ic(e.icon)} ${e.text}</div>`; });
       Game.alliesOf(o).forEach(a => { h += `<div class="tag blue">${ic('ally')} Союз с ${this.chip(a)} до ${U.stamp(Game.allyUntil(o, a))}</div>`; });
       if (c.kind === 'alien') h += `<div class="tag green">${ic('ufo')} Сильны в атаке, слабы в обороне</div>`;
       Diplo.warsOf(o).forEach(w => { const e = Diplo.enemy(w, o); h += `<div class="tag red">${ic('swords')} Война с ${this.chip(e)} до ${U.stamp(w.until)}</div>`; });

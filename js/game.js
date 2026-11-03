@@ -242,6 +242,7 @@ const Game = {
     // сила = уровень военной базы (+ вспомогательные базы, голод) × размер страны
     let p = Military.power(i) * (0.55 + 0.45 * ratio);
     if (this.sick(i)) p *= 0.6;
+    if (Items.hornOn(i)) p *= 1.25;
     return p;
   },
   // сопротивление при обороне: маленькие страны держатся до последнего
@@ -294,7 +295,7 @@ const Game = {
     if (!this.isLand(k) || o === att) return 'no';
     if (o === this.player && this.cells(o) <= 1) return 'last';
     if (force) { this.setOwner(k, att); return 'ok'; }
-    if (this.fortGuard(k)) return 'fort';
+    if (this.ramFor !== att && this.fortGuard(k)) return 'fort';
     const sh = this.shieldFor(k);
     if (sh) { sh.hp--; this.breakShieldIfDead(sh); this.fx('block', k); return 'shield'; }
     if (this.armorOf(k)) { this.s.armor[k]--; if (!this.s.armor[k]) delete this.s.armor[k]; if (o === this.player) Stats.bump('armor_used'); this.fx('block', k); return 'armor'; }
@@ -434,14 +435,16 @@ const Game = {
     const how = this.reach(k);
     if (!how) return U.toast('Слишком далеко. Нужен порт рядом или космодром');
     if (this.s.charges <= 0) return U.toast('Нет зарядов — купи в магазине');
-    if (this.fortGuard(k)) return U.toast('Эти клетки прикрывает крепость — сначала захвати её саму');
+    if (Items.hidden(def)) return U.toast(`${this.name(def)} под дымовой завесой — сейчас её не видно и не захватить`);
+    const ram = Items.hasRam(P);
+    if (!ram && this.fortGuard(k)) return U.toast('Эти клетки прикрывает крепость — сначала захвати её саму или используй таран');
     this.s.charges--;
     if (how === 'cosmo') Buildings.useCosmo(P);
 
     // страна сопротивляется по силе
     const me = this.eff(P), dd = this.defense(def);
     let chance = 0.35 + 0.65 * me / (me + dd);
-    if (Buildings.isFort(k)) chance *= 0.5;
+    if (Buildings.isFort(k) && !ram) chance *= 0.5;
     if (Math.random() > chance) {
       Stats.bump('atk_fail');
       this.fx('repel', k);
@@ -449,7 +452,10 @@ const Game = {
       return true;
     }
     this.cause = 'capture';
-    const n = this.grab(P, def, k, this.s.level, true);
+    if (ram) { this.st(P).ram = false; this.ramFor = P; }
+    const n = this.grab(P, def, k, this.s.level * (ram ? 2 : 1), true);
+    this.ramFor = null;
+    if (ram) this.log(`Таран пробил оборону ${this.c(def)}`, 'me', 'ram', Date.now());
     this.cause = null;
     Stats.bump(n ? 'atk_win' : 'atk_fail');
     if (!n) {
