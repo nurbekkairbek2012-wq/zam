@@ -33,6 +33,7 @@ const App = {
 
   boot() {
     Planner.load();
+    Inbox.load();
     Game.init();
     Cal.init();
     MapView.init();

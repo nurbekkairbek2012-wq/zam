@@ -3,7 +3,7 @@
 const Sync = {
   PASS: '123456',
   URL: '/api/sync',
-  KEYS: ['plan.tasks', 'plan.settings', 'game.state'],
+  KEYS: ['plan.tasks', 'plan.settings', 'plan.inbox', 'game.state'],
   applying: false,
   dirty: false,
   pushing: false,

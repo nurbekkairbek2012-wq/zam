@@ -36,7 +36,10 @@
           <button class="icon-btn" id="cal-next" aria-label="Следующий месяц"><i data-ic="right"></i></button>
           <button class="btn-ghost" id="cal-today">Сегодня</button>
         </div>
+        <div class="cal-actions">
+        <button class="btn-inbox" id="btn-inbox" title="Напоминалки и несделанное"><i data-ic="bell"></i><span class="long-lbl">Напоминалки</span> <b id="inbox-count" class="inbox-pill hidden">0</b></button>
         <button class="btn-add" id="btn-add"><i data-ic="plus"></i><span class="long-lbl">Добавить задачу</span><span class="short-lbl">Задача</span></button>
+        </div>
       </div>
       <div class="cal-weekdays">
         <div>Пн</div><div>Вт</div><div>Ср</div><div>Чт</div><div>Пт</div><div>Сб</div><div>Вс</div>
@@ -54,6 +57,10 @@
       </div>
     </section>
     <aside class="cal-side">
+      <div class="card" id="side-inbox-card">
+        <h3><i data-ic="bell"></i> Напоминалки</h3>
+        <div id="side-inbox"></div>
+      </div>
       <div class="card">
         <h3><i data-ic="clock"></i> Сегодня</h3>
         <div id="side-today"></div>
@@ -130,6 +137,7 @@
   <script src="js/world.js"></script>
   <script src="js/diplomacy.js"></script>
   <script src="js/military.js"></script>
+  <script src="js/inbox.js"></script>
   <script src="js/calendar.js"></script>
   <script src="js/map.js"></script>
   <script src="js/charts.js"></script>

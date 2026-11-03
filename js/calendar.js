@@ -11,6 +11,7 @@ const Cal = {
     U.$('#cal-today').onclick = () => { const d = new Date(); this.y = d.getFullYear(); this.m = d.getMonth(); this.render(); };
     U.$('#cal-title').onclick = () => this.pickMonth();
     U.$('#btn-add').onclick = () => this.editor();
+    U.$('#btn-inbox').onclick = () => Inbox.open();
     this.render();
   },
   shift(n) {
@@ -37,6 +38,7 @@ const Cal = {
       const rest = occ.find(t => t.type === 'rest');
       const cls = ['day'];
       if (d.getMonth() !== this.m) cls.push('other');
+      if (U.wd(ds) >= 5) cls.push('weekend');
       if (ds === today) cls.push('today');
       if (rest) cls.push('rest');
       const sums = Planner.hasSchool(ds) || School.covers(ds) ? School.sumsOn(ds) : [];
@@ -97,6 +99,15 @@ const Cal = {
   },
 
   renderSide() {
+    const cnt = Inbox.count(), pill = U.$('#inbox-count');
+    pill.textContent = cnt; pill.classList.toggle('hidden', !cnt);
+    const missedN = Inbox.missed().length, rem = Inbox.reminders();
+    U.$('#side-inbox').innerHTML = (missedN ? `<div class="item c-red missed" data-inbox>${ic('x')}<span class="name">Не сделано: ${missedN}</span><span class="t">разобрать</span></div>` : '')
+      + rem.slice(0, 4).map(r => `<div class="item c-gray" data-inbox>${ic('bell')}<span class="name">${U.esc(r.title)}</span></div>`).join('')
+      + (rem.length > 4 ? `<div class="empty">и ещё ${rem.length - 4}…</div>` : '')
+      + (cnt ? `<button class="btn" data-swipe style="width:100%;margin-top:4px">${ic('list')} Разобрать по очереди</button>` : '<div class="empty">Пусто. Нажми «Напоминалки», чтобы записать дело без даты.</div>');
+    U.$$('#side-inbox [data-inbox]').forEach(el => el.onclick = () => Inbox.open());
+    const sw = U.$('#side-inbox [data-swipe]'); if (sw) sw.onclick = () => Inbox.swipe();
     const today = U.today();
     const occ = Planner.occurrencesOn(today);
     let h = '';
@@ -304,10 +315,10 @@ const Cal = {
   },
 
   // ---------- добавление / изменение ----------
-  editor(task = null, date = null, parentId = null) {
+  editor(task = null, date = null, parentId = null, opts = {}) {
     const back = this.openDay;
     const f = task ? JSON.parse(JSON.stringify(task)) : {
-      type: 'normal', title: '', importance: 'orange',
+      type: 'normal', title: opts.title || '', importance: 'orange',
       dates: [date || U.today()], start: '17:00', end: '18:00', allDay: false, notes: '', hours: 1, parent: parentId || '',
     };
     const goals = Planner.goals().filter(g => !task || g.id !== task.id);
@@ -462,7 +473,7 @@ const Cal = {
       const par = $('#e-parent').value;
       if (par && ['normal', 'deadline', 'meet'].includes(f.type)) data.parent = par;
       else if (task) delete Planner.get(task.id).parent;
-      if (task) Planner.update(task.id, data); else Planner.add(data);
+      if (task) Planner.update(task.id, data); else { Planner.add(data); if (opts.onSave) opts.onSave(); }
       U.toast(task ? 'Сохранено' : 'Задача добавлена');
       App.refresh();
       back ? this.dayView(back) : U.closeModal();
