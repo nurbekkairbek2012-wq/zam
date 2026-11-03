@@ -39,9 +39,12 @@ const Cal = {
       if (d.getMonth() !== this.m) cls.push('other');
       if (ds === today) cls.push('today');
       if (rest) cls.push('rest');
+      const sums = Planner.hasSchool(ds) || School.covers(ds) ? School.sumsOn(ds) : [];
+      if (sums.length) cls.push('sumday');
       const chips = occ.filter(t => t.type !== 'rest');
       html += `<div class="${cls.join(' ')}" data-date="${ds}">
         <div class="top"><span class="num">${d.getDate()}</span>${Planner.hasSchool(ds) ? '<span class="school-bar" title="Школа"></span>' : ''}</div>
+        ${sums.length ? `<div class="chip c-sum" title="Суммативки">СОР: ${U.esc(sums.join(', '))}</div>` : ''}
         ${rest ? `<div class="chip c-green">${U.esc(rest.title || 'Отдых')}</div>` : ''}
         ${chips.slice(0, maxChips).map(t => {
           const st = Planner.status(t, ds);
@@ -97,7 +100,11 @@ const Cal = {
     const today = U.today();
     const occ = Planner.occurrencesOn(today);
     let h = '';
-    if (Planner.hasSchool(today)) h += `<div class="item c-school" style="cursor:default">${ic('school')}<span class="name">Школа</span><span class="t">${Planner.settings.schoolStart}–${Planner.settings.schoolEnd}</span></div>`;
+    if (Planner.hasSchool(today)) {
+      const sp = Planner.schoolSpan(today), L = School.lessons(today);
+      h += `<div class="item c-school" data-school="${today}">${ic('school')}<span class="name">Школа${L.length ? ` · ${L.length} уроков` : ''}</span><span class="t">${sp.start}–${sp.end}</span></div>`;
+    }
+    h += School.sumsOn(today).map(s => `<div class="item c-sum" data-school="${today}">${ic('alert')}<span class="name">Суммативка: ${U.esc(School.title(s))}</span></div>`).join('');
     h += occ.map(t => this.itemHtml(t, today)).join('');
     U.$('#side-today').innerHTML = h || '<div class="empty">На сегодня ничего нет</div>';
 
@@ -125,11 +132,13 @@ const Cal = {
     for (let i = 1; i <= 7; i++) {
       const d = U.addDays(today, i);
       const list = Planner.occurrencesOn(d).filter(t => t.type === 'normal' || t.type === 'meet');
-      if (list.length) soon += `<div class="empty" style="margin:6px 0 4px">${U.WEEKDAYS[U.parse(d).getDay()]}, ${U.human(d)}</div>` + list.map(t => this.itemHtml(t, d)).join('');
+      const sums = School.sumsOn(d);
+      if (list.length || sums.length) soon += `<div class="empty" style="margin:6px 0 4px">${U.WEEKDAYS[U.parse(d).getDay()]}, ${U.human(d)}</div>` + sums.map(s => `<div class="item c-sum" data-school="${d}">${ic('alert')}<span class="name">Суммативка: ${U.esc(School.title(s))}</span></div>`).join('') + list.map(t => this.itemHtml(t, d)).join('');
     }
     U.$('#side-soon').innerHTML = soon || '<div class="empty">Ближайшая неделя свободна</div>';
 
     U.$$('.cal-side [data-id]').forEach(el => el.onclick = () => this.details(el.dataset.id, el.dataset.date));
+    U.$$('.cal-side [data-school]').forEach(el => el.onclick = () => this.dayView(el.dataset.school));
   },
 
   // ---------- день по часам ----------
@@ -146,6 +155,7 @@ const Cal = {
         <button class="icon-btn" id="dv-next">${ic('right')}</button>
         <button class="icon-btn" data-close>${ic('x')}</button>
       </div>
+      ${School.sumsWithoutLesson(date).map(s => `<div class="dv-banner sum">${ic('alert')} Суммативка: ${U.esc(School.title(s))} (в этот день урока нет)</div>`).join('')}
       ${rest ? `<div class="dv-banner" style="cursor:pointer">${ic('leaf')} ${U.esc(rest.title || 'День отдыха')} — сегодня ничего нет</div>` : ''}
       <div class="dv-scroll"><div class="timeline" id="tl">
         ${hours.map(h => `<div class="hour" ${h === 24 ? 'style="height:0"' : ''}><span>${U.pad(h % 24)}:00</span></div>`).join('')}
@@ -168,7 +178,9 @@ const Cal = {
     const from = this.HOUR_FROM * 60;
     const items = [];
     if (Planner.hasSchool(date)) {
-      items.push({ school: true, s: U.toMin(Planner.settings.schoolStart), e: U.toMin(Planner.settings.schoolEnd) });
+      const L = School.lessons(date);
+      if (L.length) L.forEach(l => items.push({ lesson: l, s: U.toMin(l.start), e: U.toMin(l.end) }));
+      else items.push({ school: true, s: U.toMin(Planner.settings.schoolStart), e: U.toMin(Planner.settings.schoolEnd) });
     }
     for (const t of Planner.occurrencesOn(date)) {
       if (t.allDay) continue;
@@ -202,7 +214,13 @@ const Cal = {
       el.style.height = h + 'px';
       el.style.left = `calc(${it.col / it.cols * 100}% + 4px)`;
       el.style.width = `calc(${100 / it.cols}% - 8px)`;
-      if (it.school) {
+      if (it.lesson) {
+        const l = it.lesson;
+        el.className = 'block lesson' + (l.sum ? ' sum' : '');
+        el.innerHTML = `<b>${l.sum ? ic('alert') + ' СОР · ' : ''}${U.esc(l.title)}</b><small>${l.n + 1} урок · ${l.start}–${l.end}</small>`;
+        el.title = l.sum ? 'Суммативка. Нажми, чтобы снять отметку' : 'Нажми, чтобы отметить суммативку';
+        el.onclick = () => { School.toggleSum(date, l.name); App.refresh(); this.dayView(date); };
+      } else if (it.school) {
         el.className = 'block school';
         el.innerHTML = `<b>${ic('school')} Школа</b><small>${Planner.settings.schoolStart}–${Planner.settings.schoolEnd}</small>`;
       } else {

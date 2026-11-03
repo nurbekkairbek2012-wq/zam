@@ -107,6 +107,8 @@ const App = {
         <div><label>Начало школы</label><input type="time" class="input" id="s-start"></div>
         <div><label>Конец школы</label><input type="time" class="input" id="s-end"></div>
       </div>
+      <div class="field"><label>Школьное расписание уроков действует до</label><input type="date" class="input" id="s-ttl">
+        <div class="hint">После этой даты вместо уроков показывается общий блок «Школа». Суммативку можно отметить или снять кликом по уроку в дне.</div></div>
       <div class="field"><label class="check"><input type="checkbox" id="s-summer"> Летом (июнь–август) школы нет</label>
         <div class="hint">Каникулы в учебном году отмечай как «Отдых» — в этот день школа не показывается.</div></div>
       <div class="field"><label class="check"><input type="checkbox" id="s-notify"> Напоминать за 10 минут до задачи</label>
@@ -128,6 +130,7 @@ const App = {
       $('#s-start').value = s.schoolStart;
       $('#s-end').value = s.schoolEnd;
       $('#s-summer').checked = s.summerOff;
+      $('#s-ttl').value = School.until();
       $('#s-notify').checked = s.notify;
       $('#s-sync').textContent = Sync.online ? 'включена — данные общие для ноута и телефона' : 'нет связи с сервером, данные хранятся только на этом устройстве';
       $('#s-notify').onchange = async () => {
@@ -139,7 +142,7 @@ const App = {
       $('#s-save').onclick = () => {
         Object.assign(s, {
           schoolOn: $('#s-school').checked, schoolStart: $('#s-start').value || '08:00',
-          schoolEnd: $('#s-end').value || '16:00', summerOff: $('#s-summer').checked, notify: $('#s-notify').checked,
+          schoolEnd: $('#s-end').value || '16:00', summerOff: $('#s-summer').checked, timetableUntil: $('#s-ttl').value || School.UNTIL, notify: $('#s-notify').checked,
         });
         Planner.saveSettings();
         U.closeModal(); this.refresh(); U.toast('Сохранено');

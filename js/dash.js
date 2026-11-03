@@ -253,7 +253,7 @@ const Dash = {
     const now = new Date();
     const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     let schoolH = 0;
-    for (let d = 1; d <= dim; d++) { const ds = U.ymd(new Date(now.getFullYear(), now.getMonth(), d)); if (Planner.hasSchool(ds)) schoolH += (U.toMin(Planner.settings.schoolEnd) - U.toMin(Planner.settings.schoolStart)) / 60; }
+    for (let d = 1; d <= dim; d++) { const ds = U.ymd(new Date(now.getFullYear(), now.getMonth(), d)); if (Planner.hasSchool(ds)) { const sp = Planner.schoolSpan(ds); schoolH += (U.toMin(sp.end) - U.toMin(sp.start)) / 60; } }
     let freeEv = 0;
     for (let i = 1; i <= 7; i++) { const d = U.addDays(U.today(), i); if (!Planner.occurrencesOn(d).some(t => !t.allDay && U.toMin(t.end) > 17 * 60)) freeEv++; }
     const wdPlan = [0, 0, 0, 0, 0, 0, 0], wdDone = [0, 0, 0, 0, 0, 0, 0];

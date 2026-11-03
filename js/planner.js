@@ -68,9 +68,17 @@ const Planner = {
     const s = this.settings;
     if (!s.schoolOn) return false;
     if (U.wd(date) > 4) return false;
+    if (School.covers(date)) return School.lessons(date).length > 0 && !this.isRestDay(date);
     const m = U.parse(date).getMonth();
     if (s.summerOff && m >= 5 && m <= 7) return false;
     return !this.isRestDay(date);
+  },
+
+  // начало и конец школы в этот день
+  schoolSpan(date) {
+    const L = School.lessons(date);
+    if (L.length) return { start: L[0].start, end: L[L.length - 1].end };
+    return { start: this.settings.schoolStart, end: this.settings.schoolEnd };
   },
 
   hours(t) {
