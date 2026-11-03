@@ -579,6 +579,9 @@ body.locked .page, body.locked .tabs, body.locked .wallet { visibility: hidden; 
 .day.weekend.other { background: #f3f1f6; }
 .day.weekend.rest { background: var(--green-bg); }
 
+/* магазин: больше вкладок */
+.stabs { flex-wrap: wrap; }
+
 /* напоминалки */
 .cal-actions { display: flex; gap: 8px; align-items: center; }
 .btn-inbox { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 10px; background: #fff; border: 1px solid var(--line); font-weight: 700; color: #374151; }

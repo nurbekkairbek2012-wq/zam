@@ -26,6 +26,7 @@ const MapView = {
     U.$('#btn-shop').onclick = () => this.shop();
     U.$('#btn-diplo').onclick = () => this.diplomacy();
     U.$('#btn-army').onclick = () => Military.open();
+    U.$('#btn-inv').onclick = () => Items.open();
     U.$('#btn-capture').onclick = () => this.setMode(this.mode === 'capture' ? null : 'capture');
     U.$('#btn-home').onclick = () => this.focusPlayer();
     U.$('#btn-zin').onclick = () => this.zoomAt(this.cw / 2, this.ch / 2, this.cam.s * 1.4);
@@ -471,6 +472,7 @@ const MapView = {
         <div>Клеток: <b>${n}</b> (было ${c.init}) · Сила: <b>${Math.round(Game.eff(o))}</b></div>`;
       h += `<div class="muted">${ic('power')} Военная база ур. ${Military.level(o)}${Military.auxBonus(o) ? `, вспомогательные +${Math.round(Military.auxBonus(o) * 100)}%` : ''}${Military.hungry(o) ? ' · <b style="color:#b91c1c">армия голодает</b>' : ''}</div>`;
       if (Game.sick(o)) h += `<div class="tag purple">${ic('virus')} Эпидемия: сила −40%</div>`;
+      else if (me && Items.immuneUntil()) h += `<div class="tag green">${ic('pill')} Иммунитет до ${U.stamp(Items.immuneUntil())}</div>`;
       Game.alliesOf(o).forEach(a => { h += `<div class="tag blue">${ic('ally')} Союз с ${this.chip(a)} до ${U.stamp(Game.allyUntil(o, a))}</div>`; });
       if (c.kind === 'alien') h += `<div class="tag green">${ic('ufo')} Сильны в атаке, слабы в обороне</div>`;
       Diplo.warsOf(o).forEach(w => { const e = Diplo.enemy(w, o); h += `<div class="tag red">${ic('swords')} Война с ${this.chip(e)} до ${U.stamp(w.until)}</div>`; });
@@ -618,6 +620,7 @@ const MapView = {
   renderStats() {
     const P = Game.player, n = Game.cells(P);
     U.$('#army-lvl').textContent = Math.round(Game.eff(P));
+    const ic2 = U.$('#inv-count'); ic2.textContent = Items.total(); ic2.classList.toggle('hidden', !Items.total());
     U.$('#btn-army').classList.toggle('alert', Military.hungry(P));
     const unread = Diplo.unread(), mc = U.$('#mail-count');
     mc.textContent = unread; mc.classList.toggle('hidden', !unread);
@@ -839,15 +842,18 @@ const MapView = {
       }
       if (tab === 'eco') h += ['mine', 'gen', 'oil', 'bank', 'obs'].map(item).join('');
       if (tab === 'bank') h += this.bankHtml();
+      if (tab === 'items') h += Items.shopHtml();
+      if (tab === 'inv') h += Items.invHtml();
       U.$('#shop-body', root).innerHTML = h + '</div>';
     };
     U.modal(`<h2>${ic('store')} Магазин <button class="x" data-close>${ic('x')}</button></h2>
-      <div class="stabs"><button data-tab="army">${ic('swords')} Армия</button><button data-tab="eco">${ic('gem')} Экономика</button><button data-tab="bank">${ic('bank')} Банк</button></div>
+      <div class="stabs"><button data-tab="army">${ic('swords')} Армия</button><button data-tab="eco">${ic('gem')} Экономика</button><button data-tab="items">${ic('pill')} Предметы</button><button data-tab="inv">${ic('bag')} Инвентарь</button><button data-tab="bank">${ic('bank')} Банк</button></div>
       <div id="shop-body"></div>`, root => {
       draw(root);
       root.onclick = e => {
         const tb = e.target.closest('[data-tab]');
         if (tb) { tab = tb.dataset.tab; draw(root); return; }
+        if (Items.handle(e)) { draw(root); return; }
         const b = e.target.closest('[data-buy]');
         if (b) { if (Game.buy(b.dataset.buy, +b.dataset.q || 1)) { U.toast('Куплено!'); draw(root); } return; }
         const bb = e.target.closest('[data-build]');
