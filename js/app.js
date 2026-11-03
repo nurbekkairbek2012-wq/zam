@@ -41,6 +41,7 @@ const App = {
     U.$$('.tab').forEach(b => b.onclick = () => this.show(b.dataset.tab));
     U.$('#btn-settings').onclick = () => this.settings();
     U.$('#w-tiyn-btn').onclick = () => Military.openExchange();
+    U.$('#w-gold-btn').onclick = () => Military.openExchange();
 
     Game.update();
     Planner.checkMissed();

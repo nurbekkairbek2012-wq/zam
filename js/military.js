@@ -127,17 +127,25 @@ const Military = {
     const s = Game.s;
     amount = Math.floor(amount);
     if (!(amount > 0)) return 'Введи количество';
+    // золото меняется только в алмазы — обратного обмена нет
+    if (dir === 'goldToDia') {
+      if (s.gold < amount) return 'Не хватает золота';
+      s.gold -= amount;
+      Game.earn(amount * GOLD_VALUE, 'exchange');
+      Game.log(`Обмен: ${amount} зол. → ${amount * GOLD_VALUE} алм.`, 'shop', 'coin', Date.now());
+      return null;
+    }
     if (dir === 'toTiyn') {
       if (s.diamonds < amount) return 'Не хватает алмазов';
       Game.spend(amount, 'exchange');
       s.tiyn += amount * TIYN_PER_DIAMOND;
       Game.log(`Обмен: ${amount} алм. → ${amount * TIYN_PER_DIAMOND} тиын`, 'shop', 'tiyn', Date.now());
-    } else {
+    } else if (dir === 'toDia') {
       if (s.tiyn < amount * TIYN_PER_DIAMOND) return 'Не хватает тиын';
       s.tiyn -= amount * TIYN_PER_DIAMOND;
       Game.earn(amount, 'exchange');
       Game.log(`Обмен: ${amount * TIYN_PER_DIAMOND} тиын → ${amount} алм.`, 'shop', 'tiyn', Date.now());
-    }
+    } else return 'Такого обмена нет';
     return null;
   },
 
@@ -230,9 +238,11 @@ const Military = {
   },
   openExchange() {
     const draw = root => {
-      U.$('#ex-bal', root).innerHTML = `${ic('gem', 'gem')} ${Game.s.diamonds} &nbsp; ${ic('tiyn', 'tiyn')} ${Game.s.tiyn}`;
+      U.$('#ex-bal', root).innerHTML = `${ic('gem', 'gem')} ${Game.s.diamonds} &nbsp; ${ic('tiyn', 'tiyn')} ${Game.s.tiyn} &nbsp; ${ic('coin', 'coin')} ${Game.s.gold}`;
       const n = +U.$('#ex-n', root).value || 0;
       U.$('#ex-calc', root).textContent = n > 0 ? `${n} алм. = ${n * TIYN_PER_DIAMOND} тиын` : '';
+      const g = +U.$('#ex-g', root).value || 0;
+      U.$('#ex-gcalc', root).textContent = g > 0 ? `${g} зол. = ${g * GOLD_VALUE} алм.` : '';
     };
     U.modal(`<h2>${ic('tiyn', 'tiyn')} Обмен валюты <button class="x" data-close>${ic('x')}</button></h2>
       <div class="rate">1 ${ic('gem', 'gem')} = ${TIYN_PER_DIAMOND} ${ic('tiyn', 'tiyn')} тиын</div>
@@ -243,13 +253,19 @@ const Military = {
       <div class="actions">
         <button class="btn primary grow" data-ex="toTiyn">${ic('gem')} → тиын</button>
         <button class="btn grow" data-ex="toDia">тиын → ${ic('gem')}</button>
-      </div>`, root => {
+      </div>
+      <h4 class="dh" style="margin-top:16px">${ic('coin', 'coin')} Золото → алмазы</h4>
+      <div class="rate">1 ${ic('coin', 'coin')} = ${GOLD_VALUE} ${ic('gem', 'gem')}</div>
+      <div class="hint">Только в одну сторону: алмазы в золото поменять нельзя — золото добывается генераторами и золотыми жилами.</div>
+      <div class="field" style="margin-top:8px"><label>Сколько золота</label><input class="input" type="number" min="1" id="ex-g" placeholder="Например 2"></div>
+      <div class="hint" id="ex-gcalc"></div>
+      <div class="actions"><button class="btn primary grow" data-ex="goldToDia">${ic('coin')} → ${ic('gem')} алмазы</button></div>`, root => {
       draw(root);
       root.oninput = () => draw(root);
       root.onclick = e => {
         const b = e.target.closest('[data-ex]');
         if (!b) return;
-        const err = this.exchange(b.dataset.ex, +U.$('#ex-n', root).value);
+        const err = this.exchange(b.dataset.ex, +U.$(b.dataset.ex === 'goldToDia' ? '#ex-g' : '#ex-n', root).value);
         U.toast(err || 'Готово');
         draw(root);
       };
