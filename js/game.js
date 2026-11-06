@@ -119,6 +119,7 @@ const Game = {
     this.own[k] = o;
     if (this.s.armor && this.s.armor[k]) delete this.s.armor[k];
     if (this.occ) { if (this.isOccupied(k)) this.occ.add(k); else this.occ.delete(k); }
+    if ((old === this.player || o === this.player) && this.s.log) this.cellLog(k, old, o);
     const bld = Buildings.index().byCell.get(k);
     if (bld && this.lists) this.afterBuildingCaptured(bld, old, o);
     if (old === this.player && o !== this.player) this.fx('lost', k);
@@ -281,6 +282,13 @@ const Game = {
     if (b.type === 'hq') Military.hqLost(b, old, o);
   },
 
+  // каждая моя клетка: кто взял, когда и как
+  cellLog(k, from, to) {
+    const L = this.s.cellLog || (this.s.cellLog = []);
+    L.push({ t: this.t, k, f: from, o: to, h: this.cause || 'war' });
+    if (L.length > 800) this.s.cellLog = L.slice(-800);
+  },
+
   // бронь клетки: сколько ударов она ещё выдержит
   armorOf(k) { return (this.s.armor && this.s.armor[k]) || 0; },
   fortify(k, n = 1) {
@@ -353,6 +361,8 @@ const Game = {
     const want = Math.max(2, Math.round(c.init * frac));
     const q = [c.capital], seen = new Set([c.capital]);
     const fromPlayer = { n: 0 };
+    const prevCause = this.cause;
+    this.cause = 'liberate';
     let taken = 0;
     while (q.length && taken < want) {
       const k = q.shift();
@@ -362,6 +372,7 @@ const Game = {
       }
       for (const nb of this.nbrs(k)) if (!seen.has(nb) && this.orig[nb] === z) { seen.add(nb); q.push(nb); }
     }
+    this.cause = prevCause;
     const s = this.st(z);
     if (!taken) { s.respawnAt = this.t + 2 * DAY; return 0; }
     if (s.dead) { s.dead = null; s.killer = null; s.respawnAt = null; Stats.bump('rebirths'); }

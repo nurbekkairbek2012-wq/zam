@@ -807,10 +807,35 @@ const MapView = {
     U.$('#lb-x').onclick = () => { this.lbOpen = false; this.renderLeaderboard(); };
   },
 
+  // важные события мира для вкладки «Главное»
+  isMajor(m) {
+    if (m.kind === 'event') return true;
+    if (['dead', 'sprout', 'peace', 'ally', 'revolt', 'ufo', 'virus', 'meteor', 'wave', 'hurricane', 'gold', 'horn', 'cloud', 'obs', 'trophy'].includes(m.icon)) return true;
+    return m.icon === 'swords' && /войну|Долгая война/.test(m.text);
+  },
+  HOW: {
+    war: 'обычная атака', revenge: 'месть за твоё нападение', naval: 'морской десант', longwar: 'долгая война',
+    penalty: 'штраф за пропущенную задачу', disaster: 'стихия', restore: 'земля восстановилась после стихии', revolt: 'восстание',
+    aliens: 'пришельцы', capture: 'твой захват', liberate: 'возрождение страны', cosmo: 'удар с космодрома',
+  },
+  cellsHtml() {
+    const P = Game.player, L = (Game.s.cellLog || []).slice(-300);
+    if (!L.length) return '<div class="empty">Пока ни одна твоя клетка не меняла хозяина</div>';
+    const lost = L.filter(e => e.f === P).length, got = L.length - lost;
+    return `<div class="cl-sum"><span class="down">−${lost} потеряно</span><span class="up">+${got} получено</span><small>последние ${L.length} записей</small></div>` + L.map(e => {
+      const [x, y] = Game.xy(e.k), mine = e.o === P;
+      const how = e.o === CRATER ? 'метеорит' : e.o === FLOOD ? 'цунами' : (this.HOW[e.h] || e.h);
+      const who = mine ? (e.f === CRATER || e.f === FLOOD ? 'земля вернулась к тебе' : `ты взял у ${this.chip(e.f)}`)
+        : (e.o === CRATER || e.o === FLOOD ? 'клетка уничтожена' : `захватила ${this.chip(e.o)}`);
+      return `<div class="msg ${mine ? 'reward' : 'loss'}"><span class="mi">${ic(mine ? 'up' : 'down')}</span><div><time>${U.stamp(e.t)} · клетка ${x}:${y}</time>${mine ? '+1' : '−1'} — ${who} <small class="how">(${how})</small> <button class="goto" data-cell="${e.k}">${ic('crosshair')} показать</button></div></div>`;
+    }).join('');
+  },
+
   renderChat() {
-    const kinds = { all: null, me: ['me', 'reward', 'loss', 'shop'], war: ['war'], event: ['event'] }[this.filter];
-    const list = Game.s.log.filter(m => !kinds || kinds.includes(m.kind)).slice(-200);
     const el = U.$('#chat-log');
+    if (this.filter === 'cells') { el.innerHTML = this.cellsHtml(); el.scrollTop = el.scrollHeight; return; }
+    const kinds = { all: null, me: ['me', 'reward', 'loss', 'shop'], war: ['war'] }[this.filter];
+    const list = Game.s.log.filter(m => this.filter === 'event' ? this.isMajor(m) : !kinds || kinds.includes(m.kind)).slice(-200);
     el.innerHTML = list.map(m => {
       const text = U.esc(m.text).replace(/\[\[c:(\d+)\]\]/g, (_, i) => this.chip(+i)).replace(/\[\[k:(\d+)\]\]/g, (_, k) => `<button class="goto" data-cell="${k}">${ic('crosshair')} показать на карте</button>`);
       return `<div class="msg ${m.kind}"><span class="mi">${ic(m.icon || 'info')}</span><div><time>${U.stamp(m.t)}</time>${text}</div></div>`;

@@ -109,7 +109,9 @@ const Diplo = {
     World.contagion(att, def);
     const A = G.eff(att) * 1.25 * (G.orig[cell] === att ? 1.6 : 1), D = G.defense(def);
     if (Math.random() >= A * A / (A * A + D * D)) return null;
+    G.cause = 'longwar';
     const n = G.grab(att, def, cell, 1);
+    G.cause = null;
     if (!n) return null;
     if (w.a === att) w.sa += n; else w.sb += n;
     return { a: att, d: def, n, how: 'долгая война' };

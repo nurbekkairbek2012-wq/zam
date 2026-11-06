@@ -54,6 +54,7 @@ const Planner = {
     return { long: 'blue', rest: 'green', meet: 'gray', deadline: 'black' }[t.type];
   },
   timeText(t) {
+    if (t.noTime) return 'без времени';
     if (t.allDay) return 'весь день';
     if (t.type === 'deadline') return `до ${t.end}`;
     return `${t.start}–${t.end}`;
@@ -82,6 +83,7 @@ const Planner = {
   },
 
   hours(t) {
+    if (t.noTime) return 1; // задача на день без времени: всегда 5 алмазов
     if (t.type === 'deadline') return +t.hours || 1;
     return Math.max(0, U.toMin(t.end) - U.toMin(t.start)) / 60;
   },

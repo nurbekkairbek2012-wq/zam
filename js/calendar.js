@@ -168,6 +168,7 @@ const Cal = {
       </div>
       ${School.sumsWithoutLesson(date).map(s => `<div class="dv-banner sum">${ic('alert')} Суммативка: ${U.esc(School.title(s))} (в этот день урока нет)</div>`).join('')}
       ${rest ? `<div class="dv-banner" style="cursor:pointer">${ic('leaf')} ${U.esc(rest.title || 'День отдыха')} — сегодня ничего нет</div>` : ''}
+      ${(() => { const nt = Planner.occurrencesOn(date).filter(t => t.noTime); return nt.length ? `<div class="dv-notime"><div class="dvn-h">${ic('clock')} В этот день, без точного времени</div>${nt.map(t => this.itemHtml(t, date)).join('')}</div>` : ''; })()}
       <div class="dv-scroll"><div class="timeline" id="tl">
         ${hours.map(h => `<div class="hour" ${h === 24 ? 'style="height:0"' : ''}><span>${U.pad(h % 24)}:00</span></div>`).join('')}
       </div></div>
@@ -177,6 +178,7 @@ const Cal = {
       U.$('#dv-next', root).onclick = () => this.dayView(U.addDays(date, 1));
       U.$('#dv-add', root).onclick = () => this.editor(null, date);
       if (rest) U.$('.dv-banner', root).onclick = () => this.details(rest.id, date);
+      U.$$('.dv-notime [data-id]', root).forEach(el => el.onclick = () => this.details(el.dataset.id, date));
       this.drawBlocks(U.$('#tl', root), date);
       const scroll = U.$('.dv-scroll', root);
       const nowH = new Date().getHours();
@@ -352,6 +354,7 @@ const Cal = {
         </div>
       </div>
       <div class="field" id="f-allday"><label class="check"><input type="checkbox" id="e-allday"> Весь день</label></div>
+      <div class="field" id="f-notime"><label class="check"><input type="checkbox" id="e-notime"> Без точного времени — просто в этот день (всегда +5 алм.)</label></div>
       <div class="field row" id="f-time">
         <div id="f-start"><label ${lbl}>Начало</label><input type="time" class="input" id="e-start"></div>
         <div><label ${lbl} id="l-end">Конец</label><input type="time" class="input" id="e-end"></div>
@@ -372,6 +375,7 @@ const Cal = {
     $('#e-end').value = f.end;
     $('#e-hours').value = f.hours || 1;
     $('#e-allday').checked = !!f.allDay;
+    $('#e-notime').checked = !!f.noTime;
     $('#e-notes').value = f.notes || '';
     $('#r-from').value = U.today();
     $('#r-to').value = U.addDays(U.today(), 27);
@@ -389,10 +393,12 @@ const Cal = {
       $('#f-hours').classList.toggle('hidden', !dl);
       $('#l-date').textContent = dl ? 'Сделать до (дата)' : 'Дата';
       $('#l-end').textContent = dl ? 'До скольки' : 'Конец';
-      f.allDay = f.type === 'rest' && $('#e-allday').checked;
+      $('#f-notime').classList.toggle('hidden', !['normal', 'meet'].includes(f.type));
+      f.noTime = ['normal', 'meet'].includes(f.type) && $('#e-notime').checked;
+      f.allDay = (f.type === 'rest' && $('#e-allday').checked) || f.noTime;
       $('#f-time').classList.toggle('hidden', f.allDay);
       $('#e-count').textContent = f.dates.length;
-      const tmp = { type: f.type, start: $('#e-start').value || '00:00', end: $('#e-end').value || '00:00', hours: +$('#e-hours').value || 1 };
+      const tmp = { type: f.type, noTime: f.noTime, start: $('#e-start').value || '00:00', end: $('#e-end').value || '00:00', hours: +$('#e-hours').value || 1 };
       const r = Planner.reward(tmp);
       const lose = Math.max(1, Math.ceil(Planner.hours(tmp) * Planner.CELLS_LOST_PER_HOUR));
       $('#e-reward').textContent = f.type === 'rest' ? 'Отдых не даёт алмазов, но и не штрафует.'
@@ -426,6 +432,7 @@ const Cal = {
     });
     U.$$('[data-imp]', root).forEach(b => b.onclick = () => { f.importance = b.dataset.imp; sync(); });
     $('#e-allday').onchange = sync;
+    $('#e-notime').onchange = sync;
     $('#e-start').oninput = sync;
     $('#e-end').oninput = sync;
     $('#e-hours').oninput = sync;
@@ -467,7 +474,7 @@ const Cal = {
         if (!f.start || !f.end) return U.toast('Укажи время');
         if (U.toMin(f.end) <= U.toMin(f.start)) return U.toast('Конец должен быть позже начала');
       } else { f.start = '00:00'; f.end = '23:59'; }
-      const data = { type: f.type, title: f.title, dates: f.dates, start: f.start, end: f.end, allDay: f.allDay, notes: f.notes };
+      const data = { type: f.type, title: f.title, dates: f.dates, start: f.start, end: f.end, allDay: f.allDay, notes: f.notes, noTime: !!f.noTime };
       if (f.type === 'normal') data.importance = f.importance;
       if (f.type === 'deadline') data.hours = f.hours;
       const par = $('#e-parent').value;

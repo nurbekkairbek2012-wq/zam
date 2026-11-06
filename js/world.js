@@ -134,8 +134,10 @@ const World = {
     if (Math.random() < A * A / (A * A + D * D)) {
       const lvl = G.level(a);
       if (ram) { G.st(a).ram = false; G.ramFor = a; }
+      G.cause = revenge ? 'revenge' : how ? 'naval' : 'war';
       const n = G.grab(a, d, cell, (1 + (Math.random() < 0.25 + 0.1 * (lvl - 1) ? 1 : 0)) * (ram ? 2 : 1));
       G.ramFor = null;
+      G.cause = null;
       // союзник присоединяется
       const ally = G.alliesOf(a).find(x => x !== G.player && x !== d && G.ai(x));
       if (ally && G.cells(d)) {
@@ -220,7 +222,9 @@ const World = {
       const d = G.own[k];
       if (!G.isLand(k) || d === a || d === G.player || G.allied(a, d) || G.cells(d) <= 3) continue;
       if (G.defense(d) > G.eff(a)) continue;
+      G.cause = 'cosmo';
       const n = G.grab(a, d, k, 2);
+      G.cause = null;
       if (n) return { a, d, n, how: 'удар с космодрома' };
     }
     return null;

@@ -234,6 +234,7 @@ const Dash = {
     const m = Array.from({ length: 7 }, () => new Array(18).fill(0));
     done.forEach(o => {
       if (o.t.type === 'deadline') { const hh = new Date(o.doneAt).getHours(); if (hh >= 6) m[U.wd(o.day)][hh - 6] += o.h; return; }
+      if (o.t.allDay) return;
       const s = U.toMin(o.t.start), e = U.toMin(o.t.end);
       for (let mm = s; mm < e; mm += 60) { const hh = mm / 60 | 0; if (hh >= 6 && hh < 24) m[U.wd(o.day)][hh - 6] += Math.min(60, e - mm) / 60; }
     });
